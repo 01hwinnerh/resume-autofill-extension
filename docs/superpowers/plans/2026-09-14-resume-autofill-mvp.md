@@ -158,6 +158,7 @@ The manifest configuration must not include automatic form submission or broad p
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "build:test": "WXT_ENV=test wxt build",
     "zip": "wxt zip",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -991,10 +992,10 @@ Use Node's built-in `http` and `fs` modules. Serve only the four fixed files fro
 
 The test setup must:
 
-1. Run `pnpm build` before the browser project.
+1. Run `pnpm build:test` before the browser project.
 2. Start the fixture server on `127.0.0.1:4173`.
 3. Launch a persistent Chromium context with the built extension loaded.
-4. Use a test-only local-host permission configuration or a user gesture to grant access to the fixture tab.
+4. Build the test manifest with only `http://127.0.0.1/*` in `host_permissions`, while the normal build omits that host permission; use that test-only permission to inject the content script into fixtures.
 5. Close the context after each test so profile state cannot leak between tests.
 
 - [ ] **Step 4: Write the end-to-end tests.**

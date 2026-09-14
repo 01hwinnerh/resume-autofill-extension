@@ -578,7 +578,13 @@ Do not add sensitive fields to the automatic dictionary without a review policy.
 ```ts
 it('matches Chinese and English aliases to the same canonical field', () => {
   const matches = matchFields(
-    [descriptor({ fieldId: 'f1', label: '移动电话', kind: 'text' })],
+    [descriptor({
+      fieldId: 'f1',
+      label: '移动电话',
+      kind: 'text',
+      name: 'mobile',
+      autocomplete: 'tel',
+    })],
     profileWith('contact.phone', 'phone-test-value'),
     { mappings: [] },
   );

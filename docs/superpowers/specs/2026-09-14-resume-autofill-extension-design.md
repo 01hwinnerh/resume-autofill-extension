@@ -246,7 +246,7 @@ P0 不引入 Node 服务、数据库、Redis、Python 服务或远程 API。具�
 resume-autofill-extension/
 ├── entrypoints/
 │   ├── background.ts
-│   ├── content.ts
+│   ├── form-runtime.ts
 │   ├── sidepanel/
 │   └── options/
 ├── src/

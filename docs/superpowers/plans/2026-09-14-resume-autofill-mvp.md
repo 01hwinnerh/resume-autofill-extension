@@ -35,7 +35,7 @@ The repository already contains the confirmed design document. P0 adds the follo
 resume-autofill-extension/
 ├── entrypoints/
 │   ├── background.ts
-│   ├── form.content.ts
+│   ├── form-runtime.ts
 │   ├── options/
 │   │   ├── index.html
 │   │   ├── main.tsx
@@ -71,7 +71,7 @@ resume-autofill-extension/
 Responsibility boundaries:
 
 - `entrypoints/background.ts`: service-worker message routing, active-tab injection, and permission/error translation.
-- `entrypoints/form.content.ts`: page-local scan/fill command handling; it must not run a scan or change fields during page load.
+- `entrypoints/form-runtime.ts`: page-local scan/fill command handling; it is dynamically injected and must not run a scan or change fields before receiving an explicit command.
 - `entrypoints/sidepanel/`: review, confirmation, result display, and current-tab actions.
 - `entrypoints/options/`: profile editing and explicit mapping management.
 - `src/shared/`: serializable contracts shared by extension contexts.
@@ -94,7 +94,7 @@ Responsibility boundaries:
 - Create: `package.json`
 - Create: `pnpm-lock.yaml`
 - Create: `entrypoints/background.ts`
-- Create: `entrypoints/form.content.ts`
+- Create: `entrypoints/form-runtime.ts`
 - Create: `entrypoints/options/index.html`
 - Create: `entrypoints/options/main.tsx`
 - Create: `entrypoints/options/App.tsx`
@@ -173,7 +173,7 @@ The manifest configuration must not include automatic form submission or broad p
 
 - [ ] **Step 5: Add minimal buildable entrypoints.**
 
-The two React entrypoints must mount a root element and render a plain text shell. `background.ts` and `form.content.ts` must register no page mutation at load time. The content entrypoint is named `form.content.ts` so WXT produces a separately injectable form script rather than treating helper files as unrelated entrypoints.
+The two React entrypoints must mount a root element and render a plain text shell. `background.ts` and `form-runtime.ts` must register no page mutation at load time. The runtime file uses WXT's unlisted-script naming so it can be dynamically injected without a permanent `matches` or broad host permission.
 
 - [ ] **Step 6: Add a test configuration that uses JSDOM only for unit tests.**
 
@@ -800,7 +800,7 @@ git commit -m "feat(resume-autofill): add adapter registry contract"
 - Create: `src/runtime/application-controller.ts`
 - Modify: `src/shared/messages.ts`
 - Modify: `entrypoints/background.ts`
-- Modify: `entrypoints/form.content.ts`
+- Modify: `entrypoints/form-runtime.ts`
 - Test: `tests/unit/runtime/application-controller.test.ts`
 - Test: `tests/unit/runtime/message-errors.test.ts`
 
@@ -840,7 +840,7 @@ The background path must:
 
 1. Identify the active tab.
 2. Request or use the user-gesture-derived active-tab access.
-3. Inject the WXT output file `content-scripts/form.js` only when a scan or confirmed fill is requested.
+3. Inject the WXT unlisted-script output file `form-runtime.js` only when a scan or confirmed fill is requested.
 4. Send `scan-page` or `fill-fields` to the content script.
 5. Load profile and mappings in the extension context, not in the page context.
 6. Return serializable results to the side panel.
@@ -852,7 +852,7 @@ The injection call must use the generated WXT path:
 ```ts
 await browser.scripting.executeScript({
   target: { tabId },
-  files: ['content-scripts/form.js'],
+  files: ['form-runtime.js'],
 });
 ```
 
@@ -870,7 +870,7 @@ Use stable error codes such as `TAB_UNAVAILABLE`, `PERMISSION_DENIED`, `CONTENT_
 pnpm exec vitest run tests/unit/runtime/application-controller.test.ts tests/unit/runtime/message-errors.test.ts
 pnpm typecheck
 pnpm build
-git add src/runtime src/shared/messages.ts entrypoints/background.ts entrypoints/form.content.ts tests/unit/runtime
+git add src/runtime src/shared/messages.ts entrypoints/background.ts entrypoints/form-runtime.ts tests/unit/runtime
 git diff --cached --check
 git commit -m "feat(resume-autofill): connect extension runtime messages"
 ```

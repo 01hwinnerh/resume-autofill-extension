@@ -49,7 +49,7 @@ describe('matchFields', () => {
         autocomplete: 'tel',
       })],
       profileWith('contact.phone', 'phone-test-value'),
-      { mappings: [] },
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
     );
 
     expect(matches[0].selected?.profileKey).toBe('contact.phone');
@@ -60,7 +60,7 @@ describe('matchFields', () => {
     const [match] = matchFields(
       [descriptor({ label: 'Location' })],
       profileWith('preference.city', 'Shanghai'),
-      { mappings: [] },
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
     );
 
     expect(match.selected?.profileKey).toBe('preference.city');
@@ -72,7 +72,7 @@ describe('matchFields', () => {
     const [match] = matchFields(
       [descriptor({ label: 'Email', kind: 'select', options: [{ label: 'A', value: 'a' }] })],
       profileWith('contact.email', 'candidate@example.test'),
-      { mappings: [] },
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
     );
 
     expect(match.selected?.score).toBe(0.55);
@@ -100,7 +100,11 @@ describe('matchFields', () => {
       },
     };
 
-    const [match] = matchFields([field], profile, { mappings });
+    const [match] = matchFields(
+      [field],
+      profile,
+      { mappings, pageContext: { host: 'example.test', path: '/apply' } },
+    );
 
     expect(match.selected).toMatchObject({
       profileKey: 'contact.email',
@@ -108,5 +112,39 @@ describe('matchFields', () => {
       source: 'user',
     });
     expect(match.status).toBe('matched');
+  });
+
+  it('falls back to generic matching when a mapping scope does not match the page', () => {
+    const field = descriptor({
+      label: 'Name',
+      name: 'name',
+      fingerprint: 'text|name|name',
+    });
+    const mappings: UserFieldMapping[] = [{
+      id: 'mapping-1',
+      scope: { host: 'example.test', path: '/apply' },
+      fingerprint: field.fingerprint,
+      profileKey: 'contact.email',
+      createdAt: '2026-09-14T00:00:00.000Z',
+    }];
+    const profile: Profile = {
+      schemaVersion: 1,
+      fields: {
+        ...profileWith('identity.name', 'Candidate').fields,
+        ...profileWith('contact.email', 'candidate@example.test').fields,
+      },
+    };
+
+    const [match] = matchFields(
+      [field],
+      profile,
+      { mappings, pageContext: { host: 'other.test', path: '/other' } },
+    );
+
+    expect(match.selected).toMatchObject({
+      profileKey: 'identity.name',
+      source: 'generic',
+    });
+    expect(match.status).toBe('needs_confirmation');
   });
 });

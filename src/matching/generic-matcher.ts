@@ -7,6 +7,10 @@ import { SCORE_WEIGHTS, scoreField } from './score-field';
 
 export interface MatchOptions {
   mappings: UserFieldMapping[];
+  pageContext: {
+    host: string;
+    path: string;
+  };
 }
 
 function createUserCandidate(profileKey: string): MatchCandidate {
@@ -34,12 +38,23 @@ function genericCandidates(descriptor: PageFieldDescriptor, profile: Profile): M
     .sort((left, right) => right.score - left.score);
 }
 
+function mappingAppliesToPage(
+  mapping: UserFieldMapping,
+  pageContext: MatchOptions['pageContext'],
+): boolean {
+  return mapping.scope.host === pageContext.host
+    && (mapping.scope.path === undefined || mapping.scope.path === pageContext.path);
+}
+
 function matchField(
   descriptor: PageFieldDescriptor,
   profile: Profile,
   mappings: UserFieldMapping[],
+  pageContext: MatchOptions['pageContext'],
 ): FieldMatch {
-  const mapping = mappings.find((item) => item.fingerprint === descriptor.fingerprint);
+  const mapping = mappings.find((item) => (
+    item.fingerprint === descriptor.fingerprint && mappingAppliesToPage(item, pageContext)
+  ));
   const mappedField = mapping ? profile.fields[mapping.profileKey] : undefined;
   const candidates = mappedField ? [createUserCandidate(mappedField.key)] : genericCandidates(descriptor, profile);
   const selected = candidates[0];
@@ -57,5 +72,5 @@ export function matchFields(
   profile: Profile,
   options: MatchOptions,
 ): FieldMatch[] {
-  return fields.map((field) => matchField(field, profile, options.mappings));
+  return fields.map((field) => matchField(field, profile, options.mappings, options.pageContext));
 }

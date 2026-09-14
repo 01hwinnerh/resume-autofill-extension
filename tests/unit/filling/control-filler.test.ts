@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { fillField } from '../../../src/filling/control-filler';
 import type { RuntimePageField } from '../../../src/form-engine/runtime-types';
 import type { PageFieldKind } from '../../../src/shared/form';
+import { verifyField } from '../../../src/filling/verify-field';
 
 function fieldFor(markup: string, kind: PageFieldKind): RuntimePageField {
   document.body.innerHTML = markup;
@@ -67,6 +68,15 @@ describe('fillField', () => {
 
     expect(element.value).toBe('se');
     expect(events).toEqual(['input:true', 'change:true']);
+  });
+
+  it('verifies a select filled through normalized visible label fallback', async () => {
+    const field = fieldFor('<select><option value="">Choose</option><option value="se"> Senior   Engineer </option></select>', 'select');
+
+    await expect(fillField(field, 'senior engineer', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+
+    expect(verifyField(field, 'senior engineer')).toEqual({ fieldId: 'field-1', verified: true });
   });
 
   it('checks only the requested blank radio option and emits a bubbling change event', async () => {

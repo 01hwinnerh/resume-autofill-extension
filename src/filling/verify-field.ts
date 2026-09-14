@@ -37,9 +37,18 @@ export function verifyField(field: RuntimePageField, expected: FieldValue): Veri
   }
 
   const expectedValue = stringValue(expected);
+  if (field.kind === 'select') {
+    if (!(control instanceof HTMLSelectElement) || expectedValue === undefined) return mismatch(field.fieldId);
+    const selected = control.selectedOptions[0];
+    if (normalizeLabel(control.value) !== normalizeLabel(expectedValue)
+      && (!selected || normalizeLabel(selected.text) !== normalizeLabel(expectedValue))) {
+      return mismatch(field.fieldId);
+    }
+    return { fieldId: field.fieldId, verified: true };
+  }
+
   if (!(control instanceof HTMLInputElement
-    || control instanceof HTMLTextAreaElement
-    || control instanceof HTMLSelectElement)
+    || control instanceof HTMLTextAreaElement)
     || expectedValue === undefined
     || normalizeLabel(control.value) !== normalizeLabel(expectedValue)) {
     return mismatch(field.fieldId);

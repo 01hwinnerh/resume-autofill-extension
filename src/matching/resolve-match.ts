@@ -20,7 +20,8 @@ function toAdapterCandidates(
       score: hint.score,
       source: 'adapter' as const,
       reasons: [hint.reason],
-    }));
+    }))
+    .sort((left, right) => right.score - left.score);
 }
 
 function resolveField(
@@ -38,6 +39,9 @@ function resolveField(
   const candidates = [...userCandidates, ...adapterCandidates, ...genericMatch.candidates];
   const selected = candidates[0];
   const policy = selected ? profile.fields[selected.profileKey].policy : 'auto';
+  const confidenceCandidates = selected?.source === 'adapter'
+    ? adapterCandidates
+    : selected ? [selected] : [];
 
   return {
     descriptor: field,
@@ -45,7 +49,7 @@ function resolveField(
     selected,
     status: selected?.source === 'generic'
       ? genericMatch.status
-      : assignConfidenceStatus(selected ? [selected] : [], policy),
+      : assignConfidenceStatus(confidenceCandidates, policy),
   };
 }
 

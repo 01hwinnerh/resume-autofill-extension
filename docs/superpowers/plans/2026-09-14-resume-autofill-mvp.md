@@ -763,6 +763,16 @@ export class AdapterRegistry {
   register(adapter: SiteAdapter): void;
   resolve(context: PageContext): SiteAdapter | undefined;
 }
+
+export interface ResolveMatchOptions extends MatchOptions {
+  adapterHints?: AdapterHint[];
+}
+
+export function resolveMatches(
+  fields: PageFieldDescriptor[],
+  profile: Profile,
+  options: ResolveMatchOptions,
+): FieldMatch[];
 ```
 
 - [ ] **Step 1: Write failing tests for registry behavior.**
@@ -796,7 +806,7 @@ Expected: FAIL because the registry and resolution function are not implemented.
 
 - [ ] **Step 4: Implement precedence resolution.**
 
-Merge candidates in this order: explicit user mapping, adapter hint, generic matcher. Preserve source and reason in the result. An adapter hint may raise confidence but cannot override a `policy=never` profile field. No P0 real-site adapter is registered.
+`resolveMatches` must first call the existing scoped user-mapping path, then merge matching `adapterHints` by `fieldId`, then use generic candidates. Preserve source and reason in the result. An adapter hint may raise confidence but cannot override a `policy=never` profile field. Scope mismatches must fall back to adapter/generic candidates. No P0 real-site adapter is registered.
 
 - [ ] **Step 5: Run tests and commit.**
 

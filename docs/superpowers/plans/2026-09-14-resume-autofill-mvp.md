@@ -509,9 +509,11 @@ Expected: FAIL because scanner functions are not implemented.
 
 Use this order: associated `<label for>`, wrapping `<label>`, `aria-label`, visible placeholder, `name`, `id`. Trim whitespace, collapse repeated whitespace, preserve Chinese characters, and normalize English labels to lowercase. Do not read arbitrary surrounding page prose as the label.
 
+For section context, use only the nearest `fieldset > legend`, an explicit `role="group"` title, or an explicit `section` heading. If no semantic section is available, leave `sectionLabel` empty instead of using arbitrary parent text.
+
 - [ ] **Step 5: Implement control extraction.**
 
-Scan `input` except hidden/disabled types, `textarea`, and `select`. Capture current values without changing them. For a checkbox use its checked state; for a radio group create one logical field with all enabled same-name options in `elements`, use the checked option or `null` as the current value, and capture every option label/value. For a select capture option labels and values plus the selected value. Generate a deterministic field ID based on logical field order and a fingerprint based on normalized label, kind, name/id, section label, and frame path.
+Scan `input` except `hidden`, `button`, `submit`, `reset`, `image`, `file`, `password`, `color`, and `range` types, plus disabled controls; scan `textarea` and `select`. Preserve text, email, tel, url, search, number, date, month, week, time, and datetime-local values as strings. Capture current values without changing them. For a checkbox use its checked state; for a radio group create one logical field with all enabled same-name options in `elements`, use the checked option or `null` as the current value, and capture every option label/value. For a select capture option labels and values plus the selected value. Generate a deterministic field ID based on logical field order and a fingerprint based on normalized label, kind, name/id, section label, and frame path.
 
 - [ ] **Step 6: Implement descriptor conversion without DOM handles.**
 

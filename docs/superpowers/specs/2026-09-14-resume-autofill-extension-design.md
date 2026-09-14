@@ -67,6 +67,8 @@
 
 运行时字段句柄允许一个逻辑字段关联多个 DOM 元素：普通控件关联一个元素，radio 组关联该组的全部选项。跨扩展上下文传输时仍只发送不含 DOM 元素的 `PageFieldDescriptor`。
 
+通用扫描器排除 `hidden`、`button`、`submit`、`reset`、`image`、`file`、`password`、`color` 和 `range` 类型；保留可表达个人资料的文本、邮箱、电话、URL、数字、日期和时间类输入。sectionLabel 只取最近的 `fieldset > legend`、明确的 `role="group"` 标题或 `section` 标题，无法确认时留空。
+
 通用引擎不包含具体公司的选择器和页面流程。
 
 ### 3.2 招聘平台 Adapter

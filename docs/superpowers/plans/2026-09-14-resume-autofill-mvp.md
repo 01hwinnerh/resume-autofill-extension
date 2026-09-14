@@ -546,6 +546,10 @@ git commit -m "feat(resume-autofill): scan standard form controls"
 ```ts
 export interface MatchOptions {
   mappings: UserFieldMapping[];
+  pageContext: {
+    host: string;
+    path: string;
+  };
 }
 
 export function matchFields(
@@ -586,7 +590,10 @@ it('matches Chinese and English aliases to the same canonical field', () => {
       autocomplete: 'tel',
     })],
     profileWith('contact.phone', 'phone-test-value'),
-    { mappings: [] },
+    {
+      mappings: [],
+      pageContext: { host: 'fixture.test', path: '/application' },
+    },
   );
 
   expect(matches[0].selected?.profileKey).toBe('contact.phone');

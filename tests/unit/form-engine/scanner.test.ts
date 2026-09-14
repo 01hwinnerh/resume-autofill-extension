@@ -18,10 +18,10 @@ describe('scanDocument', () => {
         <input id="phone" name="phone" value="13800138000" autocomplete="tel" />
         <label> 邮箱地址 <input id="email" name="email" type="email" value="me@example.com" /></label>
         <input id="nickname" name="ignored" aria-label="昵称" value="小明" />
-        <input id="portfolio" name="portfolio" placeholder="个人主页" value="https://example.com" />
+        <input id="portfolio" name="portfolio" placeholder="个人主页" />
         <textarea name="strengths" aria-label="个人优势">沟通能力</textarea>
         <label for="degree">学历</label>
-        <select id="degree" name="degree"><option value="bachelor">本科</option><option value="master" selected>硕士</option></select>
+        <select id="degree" name="degree"><option value="bachelor">本科</option><option value="master" selected>硕士</option><option value="senior">  Senior   Engineer  </option></select>
         <label><input id="terms" name="terms" type="checkbox" checked />同意条款</label>
         <label for="gender-male">男</label><input id="gender-male" name="gender" type="radio" value="male" aria-label="性别" />
         <label for="gender-female">女</label><input id="gender-female" name="gender" type="radio" value="female" aria-label="性别" checked />
@@ -49,7 +49,7 @@ describe('scanDocument', () => {
       'text', 'text', 'text', 'text', 'textarea', 'select', 'checkbox', 'radio',
     ]);
     expect(fields.map((field) => field.currentValue)).toEqual([
-      '13800138000', 'me@example.com', '小明', 'https://example.com', '沟通能力', 'master', true, 'female',
+      '13800138000', 'me@example.com', '小明', '', '沟通能力', 'master', true, 'female',
     ]);
     expect(fields.every((field) => field.sectionLabel === '基本信息')).toBe(true);
     expect(fields.map((field) => field.fieldId)).toEqual([
@@ -58,6 +58,7 @@ describe('scanDocument', () => {
     expect(fields[5].options).toEqual([
       { label: '本科', value: 'bachelor' },
       { label: '硕士', value: 'master' },
+      { label: 'senior engineer', value: 'senior' },
     ]);
     expect(fields[7].options).toEqual([
       { label: '男', value: 'male' },

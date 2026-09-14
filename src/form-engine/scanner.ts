@@ -3,6 +3,7 @@ import type { FieldValue } from '../shared/profile';
 
 import { createFingerprint } from './fingerprint';
 import { resolveLabel, resolveSectionLabel } from './label-resolver';
+import { normalizeLabel } from './normalize-label';
 import type { RuntimePageField, ScanContext } from './runtime-types';
 
 const EXCLUDED_INPUT_TYPES = new Set([
@@ -23,7 +24,7 @@ function supportedInput(element: HTMLInputElement): boolean {
 
 function optionsFor(select: HTMLSelectElement): Array<{ label: string; value: string }> {
   return Array.from(select.options).map((option) => ({
-    label: resolveLabel(option) || option.text.trim(),
+    label: resolveLabel(option) || normalizeLabel(option.text),
     value: option.value,
   }));
 }

@@ -10,7 +10,26 @@ function isProfile(value: unknown): value is Profile {
   return candidate.schemaVersion === PROFILE_SCHEMA_VERSION
     && !!candidate.fields
     && typeof candidate.fields === 'object'
-    && !Array.isArray(candidate.fields);
+    && !Array.isArray(candidate.fields)
+    && Object.entries(candidate.fields).every(([key, field]) => isProfileField(key, field));
+}
+
+function isProfileField(key: string, value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const field = value as Record<string, unknown>;
+  return field.key === key
+    && typeof field.label === 'string'
+    && ['text', 'date', 'number', 'enum', 'boolean', 'multiselect'].includes(field.type as string)
+    && isFieldValue(field.value)
+    && ['auto', 'review', 'never'].includes(field.policy as string);
+}
+
+function isFieldValue(value: unknown): boolean {
+  return value === null
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+    || (Array.isArray(value) && value.every((item) => typeof item === 'string'));
 }
 
 export class ProfileStore {

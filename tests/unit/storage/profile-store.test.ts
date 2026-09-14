@@ -41,6 +41,16 @@ describe('ProfileStore', () => {
     await expect(store.load()).resolves.toEqual({ schemaVersion: 1, fields: {} });
   });
 
+  it('falls back when a persisted profile field is malformed', async () => {
+    const storage = new MemoryStorage();
+    await storage.set('resume-autofill.profile.v1', {
+      schemaVersion: 1,
+      fields: { email: { key: 'email', label: 'Email', type: 'text' } },
+    });
+
+    await expect(new ProfileStore(storage).load()).resolves.toEqual({ schemaVersion: 1, fields: {} });
+  });
+
   it('translates storage read failures without exposing field values', async () => {
     const cause = new Error('backend failed');
     const storage: StoragePort = {

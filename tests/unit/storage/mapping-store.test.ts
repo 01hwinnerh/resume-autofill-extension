@@ -57,6 +57,32 @@ describe('MappingStore', () => {
     await expect(new MappingStore(storage).list()).resolves.toEqual([]);
   });
 
+  it('falls back when a persisted mapping item is malformed', async () => {
+    const storage = new MemoryStorage();
+    await storage.set('resume-autofill.mappings.v1', { schemaVersion: 1, mappings: [null] });
+
+    await expect(new MappingStore(storage).list()).resolves.toEqual([]);
+  });
+
+  it('serializes concurrent upserts so neither mapping is lost', async () => {
+    const values = new Map<string, unknown>();
+    const storage: StoragePort = {
+      get: async <T>(key: string) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return values.get(key) as T | undefined;
+      },
+      set: async <T>(key: string, value: T) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        values.set(key, value);
+      },
+    };
+    const store = new MappingStore(storage);
+
+    await Promise.all([store.upsert(mapping('first')), store.upsert(mapping('second'))]);
+
+    await expect(store.list()).resolves.toEqual([mapping('first'), mapping('second')]);
+  });
+
   it('translates storage failures into a write StorageError', async () => {
     const cause = new Error('backend failed');
     const storage: StoragePort = {

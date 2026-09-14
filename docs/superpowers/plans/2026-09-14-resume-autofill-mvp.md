@@ -561,7 +561,7 @@ Include only fields needed for the P0 sample profile, with Chinese and English a
 
 ```text
 identity.name       姓名 / name / full name
-contact.phone       手机号 / 联系电话 / phone / mobile
+contact.phone       手机号 / 联系电话 / 移动电话 / phone / mobile
 contact.email       邮箱 / 电子邮箱 / email
 education.school    学校 / 毕业院校 / university / school
 education.degree    学历 / 最高学历 / degree / education

@@ -452,7 +452,7 @@ git commit -m "feat(resume-autofill): add local profile storage"
 
 ```ts
 export interface RuntimePageField extends PageFieldDescriptor {
-  element: HTMLElement;
+  elements: HTMLElement[];
 }
 
 export interface ScanContext {
@@ -511,11 +511,11 @@ Use this order: associated `<label for>`, wrapping `<label>`, `aria-label`, visi
 
 - [ ] **Step 5: Implement control extraction.**
 
-Scan `input` except hidden/disabled types, `textarea`, and `select`. Capture current values without changing them. For a checkbox use its checked state; for a radio group use the checked option; for a select capture option labels and values plus the selected value. Generate a deterministic field ID based on scan order and a fingerprint based on normalized label, kind, name/id, section label, and frame path.
+Scan `input` except hidden/disabled types, `textarea`, and `select`. Capture current values without changing them. For a checkbox use its checked state; for a radio group create one logical field with all enabled same-name options in `elements`, use the checked option or `null` as the current value, and capture every option label/value. For a select capture option labels and values plus the selected value. Generate a deterministic field ID based on logical field order and a fingerprint based on normalized label, kind, name/id, section label, and frame path.
 
 - [ ] **Step 6: Implement descriptor conversion without DOM handles.**
 
-`toDescriptor` must remove the `element` property and return data safe for `runtime.sendMessage`. No descriptor may contain the current value of a hidden input because hidden inputs are excluded.
+`toDescriptor` must remove the `elements` property and return data safe for `runtime.sendMessage`. No descriptor may contain the current value of a hidden input because hidden inputs are excluded.
 
 - [ ] **Step 7: Run tests, type checking, and commit.**
 
@@ -677,7 +677,7 @@ it('does not overwrite an existing value by default', async () => {
     overwrite: false,
     confirmed: true,
   })).resolves.toMatchObject({ status: 'skipped_existing' });
-  expect((field.element as HTMLInputElement).value).toBe('existing');
+  expect((field.elements[0] as HTMLInputElement).value).toBe('existing');
 });
 ```
 
@@ -691,7 +691,7 @@ Expected: FAIL because the filler is not implemented.
 
 - [ ] **Step 3: Implement native value writes and events.**
 
-For text-like controls, set the value through the element's native setter and dispatch bubbling `input` and `change` events. For select, choose a matching value first and otherwise a normalized visible label. For radio and checkbox, change only the requested control and dispatch `change`. Do not attempt to assign a file input value.
+For text-like controls, set the value through the element's native setter and dispatch bubbling `input` and `change` events. For select, choose a matching value first and otherwise a normalized visible label. For radio, iterate the logical field's `elements` collection, check only the requested option, and dispatch `change`; for checkbox, change only the requested control and dispatch `change`. Do not attempt to assign a file input value.
 
 - [ ] **Step 4: Implement default safety behavior.**
 

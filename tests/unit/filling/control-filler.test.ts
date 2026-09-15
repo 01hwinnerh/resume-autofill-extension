@@ -40,6 +40,32 @@ describe('fillField', () => {
     expect((field.elements[0] as HTMLInputElement).value).toBe('');
   });
 
+  it('selects and verifies one exact combobox option', async () => {
+    const field = fieldFor(`
+      <div data-form-field-id="degree"><span class="selection-item"></span><input type="search" role="combobox" aria-controls="degree-options"></div>
+      <div id="degree-options" role="listbox"><div role="option">本科</div><div role="option">硕士</div></div>
+    `, 'combobox');
+    const selected = document.querySelector<HTMLElement>('.selection-item')!;
+    document.querySelector<HTMLElement>('[role="option"]')!.addEventListener('click', () => { selected.textContent = '本科'; });
+
+    await expect(fillField(field, '本科', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect(verifyField(field, '本科')).toEqual({ fieldId: 'field-1', verified: true });
+  });
+
+  it('rejects ambiguous combobox options without clicking either option', async () => {
+    const field = fieldFor(`
+      <input type="search" role="combobox" aria-controls="degree-options">
+      <div id="degree-options" role="listbox"><div role="option">本科</div><div role="option">本科</div></div>
+    `, 'combobox');
+    const clicks: number[] = [];
+    document.querySelectorAll<HTMLElement>('[role="option"]').forEach((option) => option.addEventListener('click', () => clicks.push(1)));
+
+    await expect(fillField(field, '本科', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'failed', fieldId: 'field-1', reason: 'combobox option match is ambiguous' });
+    expect(clicks).toHaveLength(0);
+  });
+
   it.each([
     ['text input', '<input>', 'text'],
     ['textarea', '<textarea></textarea>', 'textarea'],

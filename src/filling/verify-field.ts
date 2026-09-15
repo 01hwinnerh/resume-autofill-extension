@@ -3,6 +3,7 @@ import { normalizeLabel } from '../form-engine/normalize-label';
 import type { FieldValue } from '../shared/profile';
 
 import type { VerificationOutcome } from './fill-types';
+import { readComboboxValue } from './combobox-control';
 
 function mismatch(fieldId: string): VerificationOutcome {
   return {
@@ -42,6 +43,14 @@ export function verifyField(field: RuntimePageField, expected: FieldValue): Veri
     const selected = control.selectedOptions[0];
     if (normalizeLabel(control.value) !== normalizeLabel(expectedValue)
       && (!selected || normalizeLabel(selected.text) !== normalizeLabel(expectedValue))) {
+      return mismatch(field.fieldId);
+    }
+    return { fieldId: field.fieldId, verified: true };
+  }
+  if (field.kind === 'combobox') {
+    if (!(control instanceof HTMLInputElement)
+      || expectedValue === undefined
+      || normalizeLabel(readComboboxValue(control)) !== normalizeLabel(expectedValue)) {
       return mismatch(field.fieldId);
     }
     return { fieldId: field.fieldId, verified: true };

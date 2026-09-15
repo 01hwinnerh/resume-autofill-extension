@@ -46,11 +46,18 @@ function formilyContainer(element: HTMLElement): HTMLElement | undefined {
   return element.closest<HTMLElement>('[data-form-field-id], [data-form-field-name]') ?? undefined;
 }
 
-function isManualOnlyControl(element: HTMLElement): boolean {
-  return element instanceof HTMLInputElement
-    && element.type.toLowerCase() === 'search'
-    && element.getAttribute('role') === 'combobox'
-    && formilyContainer(element) !== undefined;
+function isComboboxControl(element: HTMLElement): element is HTMLInputElement {
+  return element instanceof HTMLInputElement && element.getAttribute('role') === 'combobox';
+}
+
+function comboboxCurrentValue(element: HTMLInputElement): string {
+  const ariaValue = element.getAttribute('aria-valuetext');
+  if (ariaValue?.trim()) return ariaValue.trim();
+  const container = formilyContainer(element) ?? element.parentElement;
+  const selected = container?.querySelector<HTMLElement>(
+    '[class*="selection-item"], [class*="selectionItem"], [class*="selected-value"], [data-selected-value]',
+  );
+  return selected?.textContent?.trim() || element.value;
 }
 
 function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFieldKind, currentValue: FieldValue, options: Array<{ label: string; value: string }>, fieldId: string, context: ScanContext, sectionIndexes: Map<HTMLElement, number>): RuntimePageField {
@@ -67,7 +74,6 @@ function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFie
     fieldId, kind, inputType: element instanceof HTMLInputElement ? element.type.toLowerCase() : undefined,
     label, name, htmlId, placeholder: optionalAttribute(element, 'placeholder'), ariaLabel: optionalAttribute(element, 'aria-label'),
     autocomplete: optionalAttribute(element, 'autocomplete'), options, currentValue, sectionLabel, sectionIndex,
-    manualOnly: isManualOnlyControl(element),
     semanticSource: optionalAttribute(element, 'data-resume-autofill-semantic-source') ?? (formily ? 'formily-dom' : undefined),
     framePath: [...context.framePath],
     // sectionIndex deliberately stays out of the fingerprint to preserve old saved mappings.
@@ -89,8 +95,13 @@ export function scanDocument(document: Document, context: ScanContext): RuntimeP
         const checked = group.find((option) => option.checked);
         fields.push(buildField(control, group, 'radio', checked?.value ?? null, radioOptions(group), `field-${fields.length + 1}`, context, sectionIndexes)); continue;
       }
-      const kind: PageFieldKind = control.type.toLowerCase() === 'checkbox' ? 'checkbox' : 'text';
-      fields.push(buildField(control, [control], kind, kind === 'checkbox' ? control.checked : control.value, [], `field-${fields.length + 1}`, context, sectionIndexes)); continue;
+      const kind: PageFieldKind = control.type.toLowerCase() === 'checkbox'
+        ? 'checkbox'
+        : isComboboxControl(control) ? 'combobox' : 'text';
+      const currentValue = kind === 'checkbox'
+        ? control.checked
+        : kind === 'combobox' ? comboboxCurrentValue(control) : control.value;
+      fields.push(buildField(control, [control], kind, currentValue, [], `field-${fields.length + 1}`, context, sectionIndexes)); continue;
     }
     if (control instanceof HTMLTextAreaElement && !isDisabled(control)) {
       fields.push(buildField(control, [control], 'textarea', control.value, [], `field-${fields.length + 1}`, context, sectionIndexes)); continue;

@@ -30,9 +30,9 @@ function isCompatible(descriptor: PageFieldDescriptor, profileField: ProfileFiel
     case 'text': return descriptor.kind === 'text' || descriptor.kind === 'textarea';
     case 'date':
     case 'number': return descriptor.kind === 'text';
-    case 'enum': return descriptor.kind === 'select' || descriptor.kind === 'radio' || descriptor.kind === 'text';
-    case 'boolean': return descriptor.kind === 'checkbox' || descriptor.kind === 'radio' || descriptor.kind === 'select';
-    case 'multiselect': return descriptor.kind === 'select';
+    case 'enum': return descriptor.kind === 'select' || descriptor.kind === 'radio' || descriptor.kind === 'combobox' || descriptor.kind === 'text';
+    case 'boolean': return descriptor.kind === 'checkbox' || descriptor.kind === 'radio' || descriptor.kind === 'select' || descriptor.kind === 'combobox';
+    case 'multiselect': return descriptor.kind === 'select' || descriptor.kind === 'combobox';
   }
 }
 

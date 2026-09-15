@@ -115,18 +115,18 @@ describe('scanDocument', () => {
     const fields = scanDocument(document, context);
 
     expect(fields.map((field) => ({
+      kind: field.kind,
       label: field.label,
       name: field.name,
       sectionLabel: field.sectionLabel,
       sectionIndex: field.sectionIndex,
-      manualOnly: field.manualOnly,
       semanticSource: field.semanticSource,
     }))).toEqual([
-      { label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: false, semanticSource: 'formily-dom' },
-      { label: '开始时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: false, semanticSource: 'formily-dom' },
-      { label: '结束时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: false, semanticSource: 'formily-dom' },
-      { label: '学历', name: 'degree', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: true, semanticSource: 'formily-dom' },
-      { label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 1, manualOnly: false, semanticSource: 'formily-dom' },
+      { kind: 'text', label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
+      { kind: 'text', label: '开始时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
+      { kind: 'text', label: '结束时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
+      { kind: 'combobox', label: '学历', name: 'degree', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
+      { kind: 'text', label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 1, semanticSource: 'formily-dom' },
     ]);
     expect(fields[0].htmlId).toBe('formily-item-school');
     expect(fields[1].fingerprint).not.toBe(fields[2].fingerprint);

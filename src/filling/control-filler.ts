@@ -3,6 +3,7 @@ import { normalizeLabel } from '../form-engine/normalize-label';
 import type { FieldValue } from '../shared/profile';
 
 import type { FillOptions, FillOutcome } from './fill-types';
+import { selectComboboxOption } from './combobox-control';
 import {
   dispatchChange,
   dispatchInputAndChange,
@@ -31,6 +32,9 @@ function hasExistingValue(field: RuntimePageField): boolean {
   }
   if (field.kind === 'checkbox') {
     return control instanceof HTMLInputElement && control.checked;
+  }
+  if (field.kind === 'combobox') {
+    return typeof field.currentValue === 'string' && field.currentValue.trim() !== '';
   }
   return (control instanceof HTMLInputElement
     || control instanceof HTMLTextAreaElement
@@ -111,6 +115,15 @@ function fillCheckbox(field: RuntimePageField, value: FieldValue): FillOutcome {
   return { status: 'filled', fieldId: field.fieldId };
 }
 
+async function fillCombobox(field: RuntimePageField, value: string): Promise<FillOutcome> {
+  const control = firstControl(field);
+  if (!(control instanceof HTMLInputElement)) return failed(field.fieldId, 'combobox input is unavailable');
+  const result = await selectComboboxOption(control, value);
+  return result.selected
+    ? { status: 'filled', fieldId: field.fieldId }
+    : failed(field.fieldId, result.reason ?? 'combobox selection failed');
+}
+
 export async function fillField(
   field: RuntimePageField,
   value: FieldValue,
@@ -127,5 +140,6 @@ export async function fillField(
   if (normalizedValue === undefined) return failed(field.fieldId, 'control requires a string or number value');
   if (field.kind === 'radio') return fillRadio(field, normalizedValue);
   if (field.kind === 'select') return fillSelect(field, normalizedValue);
+  if (field.kind === 'combobox') return fillCombobox(field, normalizedValue);
   return fillTextLike(field, normalizedValue);
 }

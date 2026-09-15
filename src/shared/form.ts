@@ -19,6 +19,7 @@ export const PAGE_FIELD_KINDS = [
   'select',
   'radio',
   'checkbox',
+  'combobox',
 ] as const;
 
 export type PageFieldKind = (typeof PAGE_FIELD_KINDS)[number];

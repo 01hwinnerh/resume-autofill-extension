@@ -11,6 +11,7 @@ import type {
 } from '../shared/messages';
 import type { PageMessage } from '../shared/messages';
 import type { FillOutcome, VerificationOutcome } from '../filling/fill-types';
+import { assertScanTarget, type ScanTarget } from './scan-session';
 
 import {
   CONTENT_SCRIPT_TIMEOUT_MS,
@@ -20,6 +21,7 @@ import {
 
 export interface ActiveTab {
   id?: number;
+  windowId?: number;
   url?: string;
   title?: string;
 }
@@ -27,6 +29,7 @@ export interface ActiveTab {
 export interface BrowserPort {
   tabs: {
     query(query: { active: boolean; currentWindow: boolean }): Promise<ActiveTab[]>;
+    get?(tabId: number): Promise<ActiveTab>;
     sendMessage(tabId: number, message: PageMessage): Promise<PageResponse>;
   };
   scripting: {
@@ -43,9 +46,9 @@ export interface ControllerDependencies {
 }
 
 export interface ApplicationController {
-  scanActiveTab(): Promise<ScanResult>;
-  fillConfirmed(fields: ConfirmedFill[]): Promise<FillSummary>;
-  focusField(fieldId: string): Promise<{ fieldId: string; focused: boolean }>;
+  scanActiveTab(target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<ScanResult>;
+  fillConfirmed(fields: ConfirmedFill[], target?: ScanTarget): Promise<FillSummary>;
+  focusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }>;
 }
 
 export interface FillSummary {
@@ -120,6 +123,23 @@ export function createApplicationController(
     return tab;
   }
 
+  async function targetTab(target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<ActiveTab> {
+    if (!target) return activeTab();
+    const tab = dependencies.browser.tabs.get
+      ? await dependencies.browser.tabs.get(target.tabId)
+      : await activeTab();
+    try {
+      assertScanTarget({ ...target, scannedAt: '' }, tab);
+    } catch (cause) {
+      throw new RuntimeRequestError(createRuntimeError(
+        'TAB_UNAVAILABLE',
+        cause instanceof Error ? cause.message : '当前页面已变化，请重新扫描。',
+        true,
+      ), cause);
+    }
+    return tab;
+  }
+
   async function injectRuntime(tabId: number): Promise<void> {
     try {
       await withTimeout(
@@ -161,8 +181,8 @@ export function createApplicationController(
     }
   }
 
-  async function scanActiveTab(): Promise<ScanResult> {
-    const tab = await activeTab();
+  async function scanActiveTab(target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<ScanResult> {
+    const tab = await targetTab(target);
     const context = pageContext(tab);
     const [profile, mappings] = await Promise.all([
       dependencies.profileStore.load(),
@@ -185,6 +205,13 @@ export function createApplicationController(
     const adapter = dependencies.adapterRegistry.resolve(context);
     const fields = response.result.descriptors as PageFieldDescriptor[];
     return {
+      target: {
+        tabId: tab.id!,
+        windowId: tab.windowId,
+        url: context.url,
+        title: context.title,
+        scannedAt: new Date().toISOString(),
+      },
       page: { url: context.url, host: context.host, title: context.title },
       adapterId: response.result.adapterId ?? adapter?.id,
       fields: resolveMatches(fields, profile, {
@@ -195,8 +222,8 @@ export function createApplicationController(
     };
   }
 
-  async function fillConfirmed(fields: ConfirmedFill[]): Promise<FillSummary> {
-    const tab = await activeTab();
+  async function fillConfirmed(fields: ConfirmedFill[], target?: ScanTarget): Promise<FillSummary> {
+    const tab = await targetTab(target);
     await injectRuntime(tab.id!);
     const response = await sendPageMessage(tab.id!, {
       type: 'fill-fields',
@@ -233,8 +260,8 @@ export function createApplicationController(
     return summary;
   }
 
-  async function focusField(fieldId: string): Promise<{ fieldId: string; focused: boolean }> {
-    const tab = await activeTab();
+  async function focusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }> {
+    const tab = await targetTab(target);
     await injectRuntime(tab.id!);
     const response = await sendPageMessage(tab.id!, {
       type: 'focus-field',
@@ -255,10 +282,10 @@ export function handleRuntimeCommand(
   command: import('../shared/messages').RuntimeCommand,
 ): Promise<RuntimeCommandResponse> {
   const operation = command.type === 'scan-active-tab'
-    ? controller.scanActiveTab()
+    ? controller.scanActiveTab(command.target)
     : command.type === 'fill-confirmed-fields'
-      ? controller.fillConfirmed(command.fields)
-      : controller.focusField(command.fieldId);
+      ? controller.fillConfirmed(command.fields, command.target)
+      : controller.focusField(command.fieldId, command.target);
   return operation
     .then((data) => ({ ok: true as const, data }))
     .catch((error: unknown) => {

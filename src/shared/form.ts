@@ -1,4 +1,5 @@
 import type { FieldValue } from './profile';
+import type { ScanTarget } from '../runtime/scan-session';
 
 export const FIELD_STATUSES = [
   'matched',
@@ -62,6 +63,8 @@ export interface ScanPageInfo {
 }
 
 export interface ScanResult {
+  /** Present for live scans; optional for legacy persisted/test fixtures. */
+  target?: ScanTarget;
   page: ScanPageInfo;
   adapterId?: string;
   fields: FieldMatch[];

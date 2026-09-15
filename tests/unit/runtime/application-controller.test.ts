@@ -148,6 +148,45 @@ describe('application controller', () => {
       .rejects.toMatchObject({ code: 'PERMISSION_DENIED', retryable: true });
   });
 
+  it('rejects fill when the scanned tab URL has changed', async () => {
+    const browser = {
+      tabs: {
+        query: vi.fn(async () => [{ id: 7, url: 'https://job.test/app', title: 'Apply' }]),
+        get: vi.fn(async () => ({ id: 7, url: 'https://job.test/another', title: 'Another job' })),
+        sendMessage: vi.fn<BrowserPort['tabs']['sendMessage']>(),
+      },
+      scripting: { executeScript: vi.fn(async () => undefined) },
+    } satisfies BrowserPort;
+
+    await expect(createApplicationController(dependencies(browser)).fillConfirmed(
+      [{ fieldId: 'field-1', profileKey: 'contact.email', value: 'candidate@example.test' }],
+      { tabId: 7, url: 'https://job.test/app', title: 'Apply', scannedAt: '2026-09-15T10:00:00.000Z' },
+    )).rejects.toMatchObject({ code: 'TAB_UNAVAILABLE', retryable: true });
+    expect(browser.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('uses the explicitly scanned tab even when another tab is active', async () => {
+    const sendMessage = vi.fn(async (_tabId: number, message: PageMessage): Promise<PageResponse> => ({
+      type: 'focus-result', requestId: message.requestId, fieldId: 'field-1', focused: true,
+    }));
+    const browser = {
+      tabs: {
+        query: vi.fn(async () => [{ id: 99, url: 'https://unrelated.test', title: 'Other' }]),
+        get: vi.fn(async () => ({ id: 7, url: 'https://job.test/app', title: 'Apply' })),
+        sendMessage,
+      },
+      scripting: { executeScript: vi.fn(async () => undefined) },
+    } satisfies BrowserPort;
+
+    await createApplicationController(dependencies(browser)).focusField(
+      'field-1',
+      { tabId: 7, url: 'https://job.test/app', title: 'Apply', scannedAt: '2026-09-15T10:00:00.000Z' },
+    );
+
+    expect(browser.tabs.query).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'focus-field' }));
+  });
+
   it('returns a retryable timeout for a scan response', async () => {
     const browser = {
       tabs: {

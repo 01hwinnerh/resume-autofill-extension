@@ -1036,13 +1036,13 @@ git commit -m "feat(resume-autofill): add review-first extension UI"
 - Modify: `package.json`
 - Modify: `playwright.config.ts`
 - Modify: `wxt.config.ts`
-- Create: `tests/e2e/support/extension.ts`
+- Create: `tests/e2e/support/runtime-harness.ts`
 - Create: `tests/e2e/generic-fill.spec.ts`
 - Create: `tests/e2e/safety-boundary.spec.ts`
 
 **Interfaces:**
 - Produces a local fixture server on `http://127.0.0.1:4173` and browser tests that never navigate to a production recruitment site or click a submit control.
-- Produces `openExtensionSidePanelForActiveTab(page: Page): Promise<void>` in `tests/e2e/support/extension.ts`.
+- Produces `runRuntimeMessage(page: Page, message: PageMessage): Promise<PageResponse>` in `tests/e2e/support/runtime-harness.ts`.
 
 - [ ] **Step 1: Write fixture pages with deterministic expected outcomes.**
 
@@ -1058,25 +1058,25 @@ The test setup must:
 
 1. Run `pnpm build:test` before the browser project.
 2. Start the fixture server on `127.0.0.1:4173`.
-3. Launch a persistent Chromium context with the built extension loaded.
-4. Build the test manifest with only `http://127.0.0.1/*` in `host_permissions`, while the normal build omits that host permission; use that test-only permission to inject the content script into fixtures.
-5. Close the context after each test so profile state cannot leak between tests.
+3. Launch a Chromium context and load the built extension output to verify the package is browser-loadable.
+4. Build the test manifest with only `http://127.0.0.1/*` in `host_permissions`, while the normal build omits that host permission.
+5. Use the actual built `form-runtime.js` bundle in a local fixture page with a fake `browser.runtime` message bridge; do not depend on browser-native side-panel UI automation.
+6. Close the context after each test so profile state cannot leak between tests.
 
 - [ ] **Step 4: Write the end-to-end tests.**
 
-`generic-fill.spec.ts` must verify scan-before-fill, ordinary control filling, controlled-form verification, dynamic-field rescan, and partial success. `safety-boundary.spec.ts` must verify existing values remain unchanged, unsupported file/CAPTCHA controls remain manual, and no submit control is clicked.
+`generic-fill.spec.ts` must verify scan-before-fill, ordinary control filling, controlled-form verification, dynamic-field rescan, and partial success by sending page messages through `runRuntimeMessage`. `safety-boundary.spec.ts` must verify existing values remain unchanged, unsupported file/CAPTCHA controls remain manual, and no submit control is clicked.
 
 ```ts
 test('scan does not mutate the fixture before confirmation', async ({ page }) => {
   await page.goto('http://127.0.0.1:4173/basic-form.html');
   const before = await page.locator('#name').inputValue();
-  await openExtensionSidePanelForActiveTab(page);
-  await page.getByRole('button', { name: 'Scan page' }).click();
+  await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-1' });
   expect(await page.locator('#name').inputValue()).toBe(before);
 });
 ```
 
-The helper `openExtensionSidePanelForActiveTab` must be implemented in `tests/e2e/support/extension.ts` using the loaded extension's actual ID; it must not rely on a hard-coded extension ID.
+The helper `runRuntimeMessage` must load the actual built `form-runtime.js` once, capture its registered listener, and invoke that listener with a `PageMessage`; it must not reimplement scanner or filler logic in test code.
 
 - [ ] **Step 5: Run browser tests and inspect artifacts.**
 

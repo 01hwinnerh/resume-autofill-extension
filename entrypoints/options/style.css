@@ -1,0 +1,8 @@
+body { margin: 0; min-width: 420px; font: 14px/1.5 system-ui, sans-serif; color: #1f2937; }
+.options-page { padding: 24px; }
+.muted { color: #6b7280; }
+.profile-form { display: grid; gap: 12px; }
+.profile-form label, .custom-field-form { display: grid; gap: 6px; }
+input, button { box-sizing: border-box; min-height: 36px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+button { cursor: pointer; background: #2563eb; color: white; border-color: #2563eb; }
+.custom-field-form { margin: 24px 0; padding-top: 16px; border-top: 1px solid #e5e7eb; }

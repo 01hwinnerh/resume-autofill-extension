@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <body>
+    <form id="application-form">
+      <label for="name">姓名</label>
+      <input id="name" name="name" value="Existing Candidate" />
+
+      <label for="phone">联系电话</label>
+      <input id="phone" name="mobile" autocomplete="tel" />
+
+      <label for="email">邮箱</label>
+      <input id="email" name="email" type="email" />
+
+      <label for="degree">学历</label>
+      <select id="degree" name="degree">
+        <option value="">请选择</option>
+        <option value="bachelor">本科</option>
+        <option value="master">硕士</option>
+      </select>
+
+      <label for="city">意向城市</label>
+      <input id="city" name="city" />
+
+      <fieldset>
+        <legend>工作方式</legend>
+        <label for="remote">远程</label>
+        <input id="remote" name="workMode" type="radio" value="remote" />
+        <label for="office">现场</label>
+        <input id="office" name="workMode" type="radio" value="office" />
+      </fieldset>
+
+      <label for="consent">同意隐私政策</label>
+      <input id="consent" name="consent" type="checkbox" />
+
+      <button id="submit" type="submit">提交申请</button>
+    </form>
+    <script>
+      window.__submitted = false;
+      document.querySelector('#application-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        window.__submitted = true;
+      });
+    </script>
+  </body>
+</html>

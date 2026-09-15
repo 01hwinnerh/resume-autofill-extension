@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <label for="controlled-email">Email</label>
+    <input id="controlled-email" name="email" type="email" />
+    <label for="controlled-degree">Degree</label>
+    <select id="controlled-degree" name="degree">
+      <option value="">Choose</option>
+      <option value="bachelor">Bachelor</option>
+      <option value="master">Master</option>
+    </select>
+    <script>
+      const state = { email: '', degree: '' };
+      const email = document.querySelector('#controlled-email');
+      const degree = document.querySelector('#controlled-degree');
+      email.addEventListener('input', () => {
+        state.email = email.value;
+        queueMicrotask(() => { email.value = state.email; });
+      });
+      degree.addEventListener('change', () => {
+        state.degree = degree.value;
+        queueMicrotask(() => { degree.value = state.degree; });
+      });
+    </script>
+  </body>
+</html>

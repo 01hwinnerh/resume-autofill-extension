@@ -1042,28 +1042,28 @@ git commit -m "feat(resume-autofill): add review-first extension UI"
 
 **Interfaces:**
 - Produces a local fixture server on `http://127.0.0.1:4173` and browser tests that never navigate to a production recruitment site or click a submit control.
-- Produces `runRuntimeMessage(page: Page, message: PageMessage): Promise<PageResponse>` in `tests/e2e/support/runtime-harness.ts`.
+- Produces overloaded `runRuntimeMessage` helpers in `tests/e2e/support/runtime-harness.ts`, returning the response variant corresponding to the page message type.
 
-- [ ] **Step 1: Write fixture pages with deterministic expected outcomes.**
+- [x] **Step 1: Write fixture pages with deterministic expected outcomes.**
 
 `basic-form.html` must contain standard controls for name, phone, email, degree, city, radio, checkbox, and select. `controlled-form.html` must render a controlled input and select with a small local script that replaces DOM values from its internal state. `dynamic-form.html` must append a second form section after a button click. `unsupported-form.html` must contain a file input and a CAPTCHA-like placeholder with no bypass logic.
 
-- [ ] **Step 2: Implement the local fixture server.**
+- [x] **Step 2: Implement the local fixture server.**
 
-Use Node's built-in `http` and `fs` modules. Serve only the four fixed files from `tests/fixtures/`, reject path traversal, set `Content-Type: text/html`, and support a `--port` argument. Do not add a general-purpose static-server dependency.
+Use Node's built-in `http` and `fs` modules. Serve only the four fixed files from `tests/fixtures/`, reject path traversal, set `Content-Type: text/html`, and support a `--port` argument. The project runs this server with Node's `tsx` ESM loader so the fixture server remains TypeScript without adding a static-server dependency.
 
-- [ ] **Step 3: Configure Playwright for extension testing.**
+- [x] **Step 3: Configure Playwright for extension testing.**
 
 The test setup must:
 
 1. Run `pnpm build:test` before the browser project.
 2. Start the fixture server on `127.0.0.1:4173`.
-3. Launch a Chromium context and load the built extension output to verify the package is browser-loadable.
+3. Launch the installed Google Chrome channel and load the built extension output to verify the package is browser-loadable without downloading a separate Playwright browser.
 4. Build the test manifest with only `http://127.0.0.1/*` in `host_permissions`, while the normal build omits that host permission.
 5. Use the actual built `form-runtime.js` bundle in a local fixture page with a fake `browser.runtime` message bridge; do not depend on browser-native side-panel UI automation.
 6. Close the context after each test so profile state cannot leak between tests.
 
-- [ ] **Step 4: Write the end-to-end tests.**
+- [x] **Step 4: Write the end-to-end tests.**
 
 `generic-fill.spec.ts` must verify scan-before-fill, ordinary control filling, controlled-form verification, dynamic-field rescan, and partial success by sending page messages through `runRuntimeMessage`. `safety-boundary.spec.ts` must verify existing values remain unchanged, unsupported file/CAPTCHA controls remain manual, and no submit control is clicked.
 
@@ -1078,18 +1078,18 @@ test('scan does not mutate the fixture before confirmation', async ({ page }) =>
 
 The helper `runRuntimeMessage` must load the actual built `form-runtime.js` once, capture its registered listener, and invoke that listener with a `PageMessage`; it must not reimplement scanner or filler logic in test code.
 
-- [ ] **Step 5: Run browser tests and inspect artifacts.**
+- [x] **Step 5: Run browser tests and inspect artifacts.**
 
 ```bash
 pnpm e2e
 ```
 
-Expected: all local fixture tests pass; Playwright report contains no production URL, real profile value, or submit action.
+Expected: all local fixture tests pass; Playwright report contains no production URL, real profile value, or submit action. Verified: `7 passed` in 5.4s; normal build manifest has no `host_permissions`, while the test build has only `http://127.0.0.1/*`.
 
-- [ ] **Step 6: Commit fixture and browser coverage.**
+- [x] **Step 6: Commit fixture and browser coverage.**
 
 ```bash
-git add tests/fixtures tests/e2e package.json playwright.config.ts
+git add tests/fixtures tests/e2e package.json playwright.config.ts wxt.config.ts
 git diff --cached --check
 git commit -m "test(resume-autofill): cover local form filling flow"
 ```

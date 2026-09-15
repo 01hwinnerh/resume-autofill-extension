@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fixtures:serve": "tsx tests/fixtures/fixture-server.ts",
+    "fixtures:serve": "node --import tsx/esm tests/fixtures/fixture-server.ts",
     "e2e": "playwright test"
   },
   "keywords": [],

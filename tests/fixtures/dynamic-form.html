@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <body>
+    <button id="add-field" type="button">添加教育经历</button>
+    <section id="fields">
+      <label for="existing-school">已有教育经历</label>
+      <input id="existing-school" name="existingSchool" />
+    </section>
+    <script>
+      document.querySelector('#add-field').addEventListener('click', () => {
+        document.querySelector('#fields').innerHTML = `
+          <label for="school">毕业院校</label>
+          <input id="school" name="school" />
+        `;
+      });
+    </script>
+  </body>
+</html>

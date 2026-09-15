@@ -32,12 +32,12 @@ const profile: Profile = {
   },
 };
 
-function dependencies(browser: BrowserPort, timeoutMs = 5000) {
+function dependencies(browser: BrowserPort, timeoutMs = 5000, adapterRegistry = new AdapterRegistry()) {
   return {
     browser,
     profileStore: { load: vi.fn(async () => profile) },
     mappingStore: { list: vi.fn(async () => []) },
-    adapterRegistry: new AdapterRegistry(),
+    adapterRegistry,
     timeoutMs,
   };
 }
@@ -73,6 +73,28 @@ describe('application controller', () => {
     expect(scanMessage.type).toBe('scan-page');
     expect(scanMessage).not.toHaveProperty('profile');
     expect(scanMessage).not.toHaveProperty('mappings');
+  });
+
+  it('passes registered site adapter hints into match resolution', async () => {
+    const unnamed = { ...descriptor, label: '', name: undefined, htmlId: undefined, fingerprint: 'text||||' };
+    const sendMessage = vi.fn(async (_tabId: number, message: PageMessage): Promise<PageResponse> => ({
+      type: 'scan-result', requestId: message.requestId, result: { descriptors: [unnamed] },
+    }));
+    const browser = {
+      tabs: { query: vi.fn(async () => [{ id: 7, url: 'https://jobs.bytedance.com/campus/resume/123/apply', title: '申请' }]), sendMessage },
+      scripting: { executeScript: vi.fn(async () => undefined) },
+    } satisfies BrowserPort;
+    const registry = new AdapterRegistry();
+    registry.register({
+      id: 'fixture-adapter',
+      matches: () => true,
+      discoverHints: () => [{ fieldId: 'field-1', profileKey: 'contact.email', score: 0.96, reason: 'site adapter' }],
+    });
+
+    const result = await createApplicationController(dependencies(browser, 5000, registry)).scanActiveTab();
+
+    expect(result.adapterId).toBe('fixture-adapter');
+    expect(result.fields[0]?.selected).toMatchObject({ profileKey: 'contact.email', source: 'adapter', score: 0.96 });
   });
 
   it('aggregates verified, skipped, and failed field outcomes independently', async () => {

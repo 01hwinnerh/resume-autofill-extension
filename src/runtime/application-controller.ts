@@ -217,7 +217,7 @@ export function createApplicationController(
       fields: resolveMatches(fields, profile, {
         mappings,
         pageContext: { host: context.host, path: context.path },
-        adapterHints: [],
+        adapterHints: adapter?.discoverHints(fields) ?? [],
       }),
     };
   }

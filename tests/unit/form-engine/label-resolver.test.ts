@@ -21,17 +21,34 @@ describe('label resolver', () => {
     expect(resolveLabel(document.querySelector('#only-id')!)).toBe('only-id');
   });
 
+  it('resolves aria-labelledby and component-library form labels', () => {
+    document.body.innerHTML = `
+      <span id="email-title">电子邮箱：</span><input id="aria-field" aria-labelledby="email-title" />
+      <div class="semi-form-field">
+        <div class="semi-form-field-label"><span class="semi-form-field-label-text">* 毕业院校：</span></div>
+        <div class="semi-form-field-main"><input id="semi-field" /></div>
+      </div>
+      <div class="custom-form-item"><div class="custom-form-item-label">手机号码</div><input id="component-field" /></div>
+    `;
+
+    expect(resolveLabel(document.querySelector('#aria-field')!)).toBe('电子邮箱');
+    expect(resolveLabel(document.querySelector('#semi-field')!)).toBe('毕业院校');
+    expect(resolveLabel(document.querySelector('#component-field')!)).toBe('手机号码');
+  });
+
   it('uses only explicit semantic section context', () => {
     document.body.innerHTML = `
       <fieldset><legend>  基本   信息 </legend><input id="legend-field" /></fieldset>
       <div role="group" title=" Contact   Details "><input id="group-field" /></div>
       <section><h2>  Work   History </h2><input id="section-field" /></section>
       <div>Unrelated parent copy <input id="plain-field" /></div>
+      <div class="education-section"><div><h3>教育经历</h3></div><div class="semi-form-field"><input id="component-section-field" /></div></div>
     `;
 
     expect(resolveSectionLabel(document.querySelector('#legend-field')!)).toBe('基本 信息');
     expect(resolveSectionLabel(document.querySelector('#group-field')!)).toBe('contact details');
     expect(resolveSectionLabel(document.querySelector('#section-field')!)).toBe('work history');
     expect(resolveSectionLabel(document.querySelector('#plain-field')!)).toBeUndefined();
+    expect(resolveSectionLabel(document.querySelector('#component-section-field')!)).toBe('教育经历');
   });
 });

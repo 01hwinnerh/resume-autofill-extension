@@ -1,4 +1,4 @@
-import type { RuntimePageField } from '../form-engine/runtime-types';
+import type { PageFieldDescriptor } from '../shared/form';
 
 export interface PageContext {
   url: string;
@@ -16,5 +16,5 @@ export interface AdapterHint {
 export interface SiteAdapter {
   readonly id: string;
   matches(context: PageContext): boolean;
-  discoverHints(fields: RuntimePageField[]): AdapterHint[];
+  discoverHints(fields: PageFieldDescriptor[]): AdapterHint[];
 }

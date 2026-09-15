@@ -113,3 +113,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .copy-success, .copy-failed { font-size: 10px; }
 .copy-success { color: #15743b; }
 .copy-failed { color: #b42318; }
+
+.manual-application-card { display:flex; align-items:center; gap:10px; padding:11px 12px; }
+.manual-application-card > div { display:grid; flex:1; min-width:0; }
+.manual-application-card strong { color:#293956; font-size:12px; }
+.manual-application-card span { color:#728098; font-size:10px; }
+.manual-application-card button { flex:none; min-height:32px; padding:0 10px; font-size:10px; }
+@media (max-width:390px) { .manual-application-card { align-items:stretch; flex-direction:column; } .manual-application-card button { width:100%; } }

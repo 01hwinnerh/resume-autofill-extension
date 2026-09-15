@@ -53,6 +53,7 @@ export default function App() {
   const [profile, setProfile] = useState<Profile>(emptyProfile());
   const [mappings, setMappings] = useState<UserFieldMapping[]>([]);
   const [lastApplication, setLastApplication] = useState<ApplicationDraft>();
+  const [manualApplication, setManualApplication] = useState<ApplicationDraft>();
   const completion = profileCompletion(profile);
   const activeTarget = state.kind === 'review' ? state.result.target : undefined;
 
@@ -207,6 +208,16 @@ export default function App() {
     await browser.tabs.create({ url: extensionUrl('applications.html') });
   }
 
+  async function beginManualApplicationRecord() {
+    setNotice('');
+    try {
+      const target = await currentPageTarget();
+      setManualApplication(applicationDraft(target.title, target.url));
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : '无法读取当前招聘页面');
+    }
+  }
+
   async function recordApplication(draft: ApplicationDraft) {
     const input: NewApplicationRecord = { ...draft };
     return applicationStore.create(input);
@@ -221,6 +232,8 @@ export default function App() {
     {view === 'assistant' && <>
       {state.kind === 'idle' && <section className="assistant-empty card"><div className="completion-ring" aria-label={`资料完成度 ${completion.percent}%`}>{completion.percent}%</div><div><h2>{completion.filled ? '继续完善资料并扫描页面' : '先完善基础资料'}</h2><p>{completion.filled ? `已填写 ${completion.filled}/${completion.total} 项资料` : '填写姓名、手机和邮箱后，匹配会更准确。'}</p></div><div className="completion-groups"><span>基本信息 {completion.bySection.basic.filled}/{completion.bySection.basic.total}</span><span>教育 {completion.bySection.education.filled}/{completion.bySection.education.total}</span><span>工作 {completion.bySection.work.filled}/{completion.bySection.work.total}</span></div>{!completion.filled && <button className="secondary-button" type="button" onClick={() => setView('profile')}>完善基础资料</button>}</section>}
       <section className="scan-card card"><div><strong>{state.kind === 'review' ? state.result.page.title || state.result.page.host : '扫描当前招聘页面'}</strong><span>{state.kind === 'review' ? state.result.page.url : '只会扫描点击按钮时当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : state.kind === 'review' ? '重新扫描' : '扫描当前页面'}</button></section>
+      <section className="manual-application-card card"><div><strong>已经在招聘网站完成投递？</strong><span>填写和投递相互独立，只有你主动确认后才会写入投递记录。</span></div><button type="button" className="secondary-button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
+      {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
       {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} />}
       {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.selectedFieldIds.length} 个字段…</div>}
       {state.kind === 'result' && <>

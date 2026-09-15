@@ -2,15 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { browser } from 'wxt/browser';
 import type { PreviewSession, ProfilePreviewSection } from '../../src/preview/preview-session';
 import { previewStorageKey } from '../../src/preview/preview-session';
-import { ApplicationStore } from '../../src/storage/application-store';
-import { LocalStorage } from '../../src/storage/local-storage';
 import type { RuntimeCommandResponse } from '../../src/shared/messages';
-
-const applicationStore = new ApplicationStore(new LocalStorage());
-
-function extensionUrl(path: string): string {
-  return (browser.runtime as typeof browser.runtime & { getURL(value: string): string }).getURL(path);
-}
 
 function mask(value: string): string {
   if (!value) return '空';
@@ -43,9 +35,6 @@ export default function App() {
   const [reveal, setReveal] = useState(false);
   const [message, setMessage] = useState('');
   const [fillCompleted, setFillCompleted] = useState(false);
-  const [recorded, setRecorded] = useState(false);
-  const [company, setCompany] = useState('');
-  const [role, setRole] = useState('');
   const id = new URLSearchParams(location.search).get('id');
 
   useEffect(() => {
@@ -54,11 +43,6 @@ export default function App() {
       const value = stored[previewStorageKey(id)] as PreviewSession | undefined;
       setSession(value);
       if (value?.kind === 'profile') setActive('profile');
-      if (value?.kind === 'fill') {
-        const host = new URL(value.page.url).hostname.replace(/^www\./, '').split('.')[0];
-        setCompany(host || value.page.host);
-        setRole(value.page.title || '待补充职位');
-      }
       setLoading(false);
     });
   }, [id]);
@@ -83,22 +67,8 @@ export default function App() {
     if (!response.ok) { setMessage(`填写失败：${response.error.message}`); return; }
     const summary = response.data as { verified: string[]; skippedExisting: string[]; failed: unknown[] };
     setFillCompleted(true);
-    setMessage(`填写完成：${summary.verified.length} 项已校验，${summary.skippedExisting.length} 项保留已有值，${summary.failed.length} 项失败。`);
-  }
-
-  async function recordApplication() {
-    if (session?.kind !== 'fill') return;
-    try {
-      await applicationStore.create({ company, role, url: session.page.url, sourceHost: session.page.host });
-      setRecorded(true);
-      setMessage('投递记录已保存，初始阶段为“已投递”。');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '记录失败，请重试');
-    }
-  }
-
-  async function openApplications() {
-    await browser.tabs.create({ url: extensionUrl('applications.html') });
+    setMessage(`已写入招聘页：${summary.verified.length} 项已校验，${summary.skippedExisting.length} 项保留已有值，${summary.failed.length} 项失败。正在返回招聘页，请检查并手动提交。`);
+    await returnToTarget();
   }
 
   if (loading) return <main className="preview-shell"><div className="empty-state"><span className="spinner" />正在准备预览…</div></main>;
@@ -120,12 +90,6 @@ export default function App() {
       </div>}
     </>}
 
-    {session.kind === 'fill' && fillCompleted && <section className="record-after-submit">
-      <div><h2>完成真实提交后，再记录本次申请</h2><p>填写完成不等于投递成功。请先回招聘页面检查并手动提交，再回来点击记录。</p></div>
-      {!recorded && <div className="record-fields"><label>公司<input value={company} onChange={(event) => setCompany(event.target.value)} /></label><label>职位<input value={role} onChange={(event) => setRole(event.target.value)} /></label></div>}
-      <div className="record-actions">{!recorded && <button className="primary" disabled={!company.trim() || !role.trim()} onClick={() => void recordApplication()}>已完成投递，记录本次申请</button>}<button className="secondary" onClick={() => void openApplications()}>查看投递记录</button></div>
-    </section>}
-
-    {session.kind === 'fill' && session.items.length > 0 && <footer className="action-bar"><div><strong>{fillCompleted ? '已填写，等待你手动提交' : `即将填写 ${session.items.length} 项`}</strong><span>{message || '不会自动提交申请'}</span></div><button className="primary" disabled={fillCompleted} onClick={() => void confirmFill()}>{fillCompleted ? '已完成填写' : '确认填写'}</button></footer>}
+    {session.kind === 'fill' && session.items.length > 0 && <footer className="action-bar"><div><strong>{fillCompleted ? '已写入招聘页面' : `即将填写 ${session.items.length} 项`}</strong><span>{message || '不会自动提交申请；投递完成后请在侧边栏主动记录'}</span></div><button className="primary" onClick={() => void (fillCompleted ? returnToTarget() : confirmFill())}>{fillCompleted ? '返回招聘页检查' : '确认填写'}</button></footer>}
   </main>;
 }

@@ -144,6 +144,14 @@ describe('scanDocument', () => {
     ]);
   });
 
+  it('ignores controls inside inactive hidden steps', () => {
+    document.body.innerHTML = `
+      <label>姓名<input name="name" /></label>
+      <section hidden><label>期望职位<input name="role" /></label></section>`;
+
+    expect(scanDocument(document, context).map((field) => field.label)).toEqual(['姓名']);
+  });
+
   it('converts runtime fields into serializable descriptors without DOM handles', () => {
     document.body.innerHTML = '<input id="phone" name="phone" value="13800138000" />';
 

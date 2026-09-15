@@ -4,13 +4,21 @@ import { createFingerprint } from './fingerprint';
 import { resolveLabel, resolveSectionLabel } from './label-resolver';
 import { normalizeLabel } from './normalize-label';
 import type { RuntimePageField, ScanContext } from './runtime-types';
+import { isInputElement, isSelectElement, isTextareaElement } from './control-elements';
 
 const EXCLUDED_INPUT_TYPES = new Set(['hidden', 'button', 'submit', 'reset', 'image', 'file', 'password', 'color', 'range']);
 type RepeatCategory = 'education' | 'work' | 'project';
 
 function optionalAttribute(element: HTMLElement, name: string): string | undefined { return element.getAttribute(name) || undefined; }
 function isDisabled(element: HTMLElement): boolean { return element.matches(':disabled'); }
-function supportedInput(element: HTMLInputElement): boolean { return !isDisabled(element) && !EXCLUDED_INPUT_TYPES.has(element.type.toLowerCase()); }
+function isHidden(element: HTMLElement): boolean {
+  if (element.closest('[hidden], [aria-hidden="true"], [inert]')) return true;
+  const view = element.ownerDocument.defaultView;
+  if (!view) return false;
+  const style = view.getComputedStyle(element);
+  return style.display === 'none' || style.visibility === 'hidden';
+}
+function supportedInput(element: HTMLInputElement): boolean { return !isDisabled(element) && !isHidden(element) && !EXCLUDED_INPUT_TYPES.has(element.type.toLowerCase()); }
 function optionsFor(select: HTMLSelectElement) { return Array.from(select.options).map((option) => ({ label: resolveLabel(option) || normalizeLabel(option.text), value: option.value })); }
 function radioOptions(inputs: HTMLInputElement[]) { return inputs.map((input) => ({ label: resolveLabel(input), value: input.value })); }
 
@@ -47,7 +55,7 @@ function formilyContainer(element: HTMLElement): HTMLElement | undefined {
 }
 
 function isComboboxControl(element: HTMLElement): element is HTMLInputElement {
-  return element instanceof HTMLInputElement && element.getAttribute('role') === 'combobox';
+  return isInputElement(element) && element.getAttribute('role') === 'combobox';
 }
 
 function comboboxCurrentValue(element: HTMLInputElement): string {
@@ -71,7 +79,7 @@ function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFie
     ? annotatedIndex
     : repeatCategory(sectionLabel) && container ? sectionIndexes.get(container) : undefined;
   return {
-    fieldId, kind, inputType: element instanceof HTMLInputElement ? element.type.toLowerCase() : undefined,
+    fieldId, kind, inputType: isInputElement(element) ? element.type.toLowerCase() : undefined,
     label, name, htmlId, placeholder: optionalAttribute(element, 'placeholder'), ariaLabel: optionalAttribute(element, 'aria-label'),
     autocomplete: optionalAttribute(element, 'autocomplete'), options, currentValue, sectionLabel, sectionIndex,
     semanticSource: optionalAttribute(element, 'data-resume-autofill-semantic-source') ?? (formily ? 'formily-dom' : undefined),
@@ -86,12 +94,12 @@ export function scanDocument(document: Document, context: ScanContext): RuntimeP
   const fields: RuntimePageField[] = []; const groupedRadios = new Set<string>();
   const controls = Array.from(document.querySelectorAll('input, textarea, select')); const sectionIndexes = buildSectionIndexes(controls);
   for (const control of controls) {
-    if (control instanceof HTMLInputElement) {
+    if (isInputElement(control)) {
       if (!supportedInput(control)) continue;
       if (control.type.toLowerCase() === 'radio' && control.name) {
         const container = sectionContainer(control); const groupKey = `${control.name}:${container ? Array.from(document.querySelectorAll('fieldset,section,[role="group"]')).indexOf(container) : -1}`;
         if (groupedRadios.has(groupKey)) continue; groupedRadios.add(groupKey);
-        const group = controls.filter((candidate): candidate is HTMLInputElement => candidate instanceof HTMLInputElement && candidate.type.toLowerCase() === 'radio' && candidate.name === control.name && sectionContainer(candidate) === container && supportedInput(candidate));
+        const group = controls.filter((candidate): candidate is HTMLInputElement => isInputElement(candidate) && candidate.type.toLowerCase() === 'radio' && candidate.name === control.name && sectionContainer(candidate) === container && supportedInput(candidate));
         const checked = group.find((option) => option.checked);
         fields.push(buildField(control, group, 'radio', checked?.value ?? null, radioOptions(group), `field-${fields.length + 1}`, context, sectionIndexes)); continue;
       }
@@ -103,10 +111,10 @@ export function scanDocument(document: Document, context: ScanContext): RuntimeP
         : kind === 'combobox' ? comboboxCurrentValue(control) : control.value;
       fields.push(buildField(control, [control], kind, currentValue, [], `field-${fields.length + 1}`, context, sectionIndexes)); continue;
     }
-    if (control instanceof HTMLTextAreaElement && !isDisabled(control)) {
+    if (control instanceof HTMLTextAreaElement && !isDisabled(control) && !isHidden(control)) {
       fields.push(buildField(control, [control], 'textarea', control.value, [], `field-${fields.length + 1}`, context, sectionIndexes)); continue;
     }
-    if (control instanceof HTMLSelectElement && !isDisabled(control)) fields.push(buildField(control, [control], 'select', control.value, optionsFor(control), `field-${fields.length + 1}`, context, sectionIndexes));
+    if (control instanceof HTMLSelectElement && !isDisabled(control) && !isHidden(control)) fields.push(buildField(control, [control], 'select', control.value, optionsFor(control), `field-${fields.length + 1}`, context, sectionIndexes));
   }
   return fields;
 }

@@ -1,3 +1,4 @@
+import { mouseEventFor } from '../form-engine/control-elements';
 import { normalizeLabel } from '../form-engine/normalize-label';
 import { dispatchInputAndChange, setNativeValue } from './native-value';
 
@@ -78,7 +79,7 @@ export async function selectComboboxOption(
   expected: string,
 ): Promise<{ selected: boolean; reason?: string }> {
   control.focus();
-  control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  control.dispatchEvent(mouseEventFor(control, 'mousedown'));
   control.click();
   setNativeValue(control, expected);
   dispatchInputAndChange(control);
@@ -88,7 +89,7 @@ export async function selectComboboxOption(
   if (matches.length > 1) return { selected: false, reason: 'combobox option match is ambiguous' };
 
   const option = matches[0];
-  option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  option.dispatchEvent(mouseEventFor(option, 'mousedown'));
   option.click();
   await wait(50);
 

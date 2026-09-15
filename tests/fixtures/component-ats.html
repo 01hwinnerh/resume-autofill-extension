@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>组件化 ATS 兼容性测试</title>
+  <style>
+    body { margin: 0; background: #f5f6fa; color: #182033; font: 15px/1.5 system-ui, sans-serif; }
+    main { max-width: 820px; margin: 28px auto; padding: 28px; background: #fff; border-radius: 18px; }
+    .applyFormModuleWrapper__fixture { margin: 24px 0; padding: 20px; border: 1px solid #e1e7f0; border-radius: 14px; }
+    .apply-form-array-card__fixture { margin: 14px 0; padding: 18px; background: #f8faff; border-radius: 12px; }
+    .ud-formily-item { margin: 14px 0; } .ud-formily-item-label { margin-bottom: 6px; font-weight: 700; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid #b9c7da; border-radius: 8px; font: inherit; box-sizing: border-box; }
+    [role=listbox] { margin-top: 4px; border: 1px solid #b9c7da; border-radius: 8px; background: white; overflow: hidden; }
+    [role=option] { padding: 9px 12px; cursor: pointer; } [role=option]:hover { background: #edf3ff; }
+    .selection-item { display: inline-block; margin-bottom: 6px; color: #245bd6; font-weight: 650; }
+    button { padding: 9px 14px; border: 0; border-radius: 8px; background: #246bfd; color: white; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Formily / 组件化 ATS</h1>
+    <p>用于验证 data-form-field 元数据、重复经历、日期区间和自定义下拉框。</p>
+    <form>
+      <section class="applyFormModuleWrapper__fixture">
+        <h2>教育经历</h2>
+        <div id="formily-item-education_list">
+          <div class="apply-form-array-card__fixture">
+            <div class="ud-formily-item" id="formily-item-school" data-form-field-id="school" data-form-field-name="school" data-form-field-i18n-name="学校名称">
+              <div class="ud-formily-item-label"><label>学校名称</label></div><div class="ud-formily-item-control"><input class="ud__native-input" /></div>
+            </div>
+            <div class="ud-formily-item" id="formily-item-start_end_time" data-form-field-id="start_end_time" data-form-field-name="start_end_time" data-form-field-i18n-name="起止时间">
+              <div class="ud-formily-item-label"><label>起止时间</label></div><div class="ud-formily-item-control"><input class="ud__native-input" placeholder="开始月份" /><input class="ud__native-input" placeholder="结束月份" /></div>
+            </div>
+            <div class="ud-formily-item" id="formily-item-degree" data-form-field-id="degree" data-form-field-name="degree" data-form-field-i18n-name="学历">
+              <div class="ud-formily-item-label"><label>学历</label></div><div class="ud-formily-item-control"><span class="selection-item" data-selected-value=""></span><input class="ud__native-input" type="search" role="combobox" aria-controls="degree-options" autocomplete="off" /><div id="degree-options" role="listbox" hidden><div role="option" data-value="本科">本科</div><div role="option" data-value="硕士">硕士</div><div role="option" data-value="博士">博士</div></div></div>
+            </div>
+          </div>
+        </div>
+        <button id="add-education" type="button">新增教育经历</button>
+      </section>
+      <button id="component-submit" type="submit">提交申请</button>
+      <output id="component-submit-state">尚未提交</output>
+    </form>
+  </main>
+  <script>
+    const input = document.querySelector('[role="combobox"]');
+    const listbox = document.querySelector('[role="listbox"]');
+    const selected = document.querySelector('.selection-item');
+    const open = () => { listbox.hidden = false; input.setAttribute('aria-expanded', 'true'); };
+    input.addEventListener('mousedown', open); input.addEventListener('focus', open); input.addEventListener('input', open);
+    listbox.addEventListener('mousedown', event => event.preventDefault());
+    listbox.addEventListener('click', event => {
+      const option = event.target.closest('[role="option"]'); if (!option) return;
+      selected.textContent = option.textContent; selected.dataset.selectedValue = option.dataset.value;
+      input.value = ''; input.setAttribute('aria-valuetext', option.dataset.value); listbox.hidden = true; input.setAttribute('aria-expanded', 'false');
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    document.querySelector('#add-education').addEventListener('click', () => {
+      const template = document.querySelector('.apply-form-array-card__fixture');
+      const clone = template.cloneNode(true); clone.querySelectorAll('input').forEach(control => control.value = '');
+      clone.querySelector('[role="listbox"]')?.remove(); clone.querySelector('[role="combobox"]')?.closest('.ud-formily-item')?.remove();
+      document.querySelector('#formily-item-education_list').append(clone);
+    });
+    document.querySelector('form').addEventListener('submit', event => { event.preventDefault(); document.querySelector('#component-submit-state').textContent = '检测到手动提交'; });
+  </script>
+</body>
+</html>

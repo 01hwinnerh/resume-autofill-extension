@@ -94,3 +94,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .application-actions button { flex:1; min-height:38px; padding:0 10px; border:0; border-radius:9px; color:#fff; background:linear-gradient(135deg,#1677ff,#2364d8); font-weight:700; }
 .application-actions .secondary-button { border:1px solid #d8e2ef; color:#405470; background:#fff; }
 @media (max-width:390px) { .primary-nav button { font-size:10px; } .application-fields { grid-template-columns:1fr; } }
+
+/* Privacy-safe compatibility diagnostics */
+.diagnosis-card { margin: -4px 0 10px; overflow: hidden; }
+.diagnosis-card summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; cursor: pointer; list-style: none; }
+.diagnosis-card summary::-webkit-details-marker { display: none; }
+.diagnosis-card summary > span { display: grid; min-width: 0; }
+.diagnosis-card summary strong { color: #293956; font-size: 12px; }
+.diagnosis-card summary small { color: #7a8799; font-size: 10px; }
+.diagnosis-card summary b { flex: none; padding: 3px 8px; border-radius: 999px; color: #1264cb; background: #eaf3ff; font-size: 11px; }
+.diagnosis-content { display: grid; gap: 9px; padding: 0 12px 12px; border-top: 1px solid #edf1f6; }
+.diagnosis-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding-top: 10px; }
+.diagnosis-metrics span { display: grid; place-items: center; padding: 7px 3px; border-radius: 8px; background: #f5f8fc; }
+.diagnosis-metrics strong { color: #293956; font-size: 15px; }
+.diagnosis-metrics small { color: #7a8799; font-size: 9px; }
+.diagnosis-content p { margin: 0; color: #68758a; font-size: 10px; }
+.diagnosis-content button { justify-self: start; min-height: 31px; padding: 0 10px; border: 1px solid #d8e2ef; border-radius: 8px; color: #405470; background: #f8fbff; font-size: 11px; font-weight: 650; }
+.copy-success, .copy-failed { font-size: 10px; }
+.copy-success { color: #15743b; }
+.copy-failed { color: #b42318; }

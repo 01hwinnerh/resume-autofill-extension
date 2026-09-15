@@ -10,6 +10,10 @@ const allowedFixtures = new Set([
   'controlled-form.html',
   'dynamic-form.html',
   'unsupported-form.html',
+  'standard-ats.html',
+  'component-ats.html',
+  'complex-ats.html',
+  'iframe-ats-form.html',
 ]);
 const requestedPort = process.argv.slice(2).indexOf('--port');
 const port = requestedPort >= 0 ? Number(process.argv[requestedPort + 3]) : 4173;

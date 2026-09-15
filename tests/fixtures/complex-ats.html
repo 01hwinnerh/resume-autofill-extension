@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8" /><title>复杂 ATS 兼容性测试</title><style>
+body{margin:0;background:#eef2f8;color:#172033;font:15px/1.5 system-ui,sans-serif}main{max-width:900px;margin:28px auto;padding:28px;background:#fff;border-radius:18px}section{padding:18px;margin:16px 0;border:1px solid #dce5f2;border-radius:12px}label{display:grid;gap:6px;margin:12px 0;font-weight:650}input{padding:10px;border:1px solid #b9c7da;border-radius:8px}button{padding:9px 14px;border:0;border-radius:8px;background:#246bfd;color:#fff}iframe{width:100%;min-height:270px;border:1px solid #cbd7e8;border-radius:12px}
+</style></head>
+<body><main><h1>动态 / 多步骤 / iframe ATS</h1><p>用于验证重新扫描、延迟渲染和 frame 定向填充。</p>
+<form id="wizard"><section id="step-one"><h2>第一步：基本信息</h2><label>姓名<input name="name" autocomplete="name" /></label><button id="next-step" type="button">进入下一步</button></section><section id="step-two" hidden><h2>第二步：动态字段</h2><label>期望职位<input name="preferred_role" /></label><label>期望城市<input name="preferred_city" /></label></section></form>
+<section><h2>嵌入式经历表单</h2><iframe title="工作经历表单" src="/iframe-ats-form.html"></iframe></section>
+</main><script>document.querySelector('#next-step').addEventListener('click',()=>{setTimeout(()=>{document.querySelector('#step-two').hidden=false},120)});</script></body></html>

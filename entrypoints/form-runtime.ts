@@ -17,15 +17,46 @@ export default defineUnlistedScript(() => {
 
   const runtimeFields = new Map<string, RuntimePageField>();
 
+  function documentAtPath(framePath: number[]): Document | undefined {
+    let current = document;
+    for (const index of framePath) {
+      const frame = current.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>('iframe, frame')[index];
+      try {
+        if (!frame?.contentDocument) return undefined;
+        current = frame.contentDocument;
+      } catch {
+        return undefined;
+      }
+    }
+    return current;
+  }
+
+  function scanFrameTree(currentDocument: Document, framePath: number[] = []): RuntimePageField[] {
+    const currentLocation = currentDocument.defaultView?.location;
+    const fields = scanDocument(currentDocument, {
+      url: currentLocation?.href ?? location.href,
+      host: currentLocation?.host ?? location.host,
+      title: currentDocument.title,
+      framePath,
+    }).map((field) => ({
+      ...field,
+      fieldId: `frame-${framePath.join('.') || 'main'}-${field.fieldId}`,
+    }));
+
+    const frames = Array.from(currentDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>('iframe, frame'));
+    frames.forEach((frame, index) => {
+      try {
+        if (frame.contentDocument) fields.push(...scanFrameTree(frame.contentDocument, [...framePath, index]));
+      } catch {
+        // Cross-origin frames remain unavailable without explicit host permissions.
+      }
+    });
+    return fields;
+  }
+
   function scan(requestId: string): PageResponse {
     try {
-      const url = new URL(location.href);
-      const fields = scanDocument(document, {
-        url: url.href,
-        host: url.host,
-        title: document.title,
-        framePath: [],
-      });
+      const fields = scanFrameTree(document);
       runtimeFields.clear();
       for (const field of fields) runtimeFields.set(field.fieldId, field);
       return {
@@ -44,13 +75,16 @@ export default defineUnlistedScript(() => {
 
   function currentField(field: RuntimePageField): RuntimePageField | undefined {
     if (field.elements.some((element) => element.isConnected)) return field;
-    const url = new URL(location.href);
-    return scanDocument(document, {
-      url: url.href,
-      host: url.host,
-      title: document.title,
+    const currentDocument = documentAtPath(field.framePath);
+    if (!currentDocument) return undefined;
+    const currentLocation = currentDocument.defaultView?.location;
+    const candidate = scanDocument(currentDocument, {
+      url: currentLocation?.href ?? location.href,
+      host: currentLocation?.host ?? location.host,
+      title: currentDocument.title,
       framePath: field.framePath,
-    }).find((candidate) => candidate.fingerprint === field.fingerprint);
+    }).find((next) => next.fingerprint === field.fingerprint);
+    return candidate ? { ...candidate, fieldId: field.fieldId } : undefined;
   }
 
   async function fill(requestId: string, fields: ConfirmedFill[]): Promise<PageResponse> {

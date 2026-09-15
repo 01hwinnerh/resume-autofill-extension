@@ -3,6 +3,7 @@ import type { ScanResult } from '../../src/shared/form';
 import type { MappingScope } from '../../src/shared/mapping';
 import type { ConfirmedFill } from '../../src/shared/messages';
 import type { FillPolicy, Profile } from '../../src/shared/profile';
+import { DiagnosisSummary } from '../../src/ui/diagnosis-summary';
 import { FieldMatchView } from '../../src/ui/field-match-view';
 import {
   filterFields, isSelectableField, quickFillFieldIds, selectionRequiresPreview,
@@ -22,6 +23,12 @@ function groupName(match: ScanResult['fields'][number]): string {
   if (key.startsWith('projects.')) return '项目经历';
   if (key.startsWith('preference.')) return '求职意向';
   return '其他字段';
+}
+
+function groupPriority(name: string): number {
+  const order = ['基本信息', '求职意向', '教育经历', '工作经历', '实习经历', '项目经历', '其他字段'];
+  const index = order.findIndex((prefix) => name.startsWith(prefix));
+  return index === -1 ? order.length : index;
 }
 
 interface ManualValue {
@@ -113,6 +120,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
       <button type="button" onClick={() => void onRescan()}>重新扫描</button>
     </section>
     <StatusSummary fields={result.fields} active={filter} onFilter={setFilter} />
+    <DiagnosisSummary result={result} />
     <div className="field-toolbar card">
       <input aria-label="搜索字段" placeholder="搜索页面字段或资料字段" value={query} onChange={(event) => setQuery(event.target.value)} />
       <select aria-label="状态筛选" value={filter} onChange={(event) => setFilter(event.target.value as FieldFilter)}>
@@ -121,7 +129,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
       <button type="button" onClick={() => setSelected(toggleVisibleSelection(selected, selectableVisible, !allVisibleSelected))}>{allVisibleSelected ? '取消当前结果' : '全选当前结果'}</button>
       <button type="button" onClick={() => setSelected(quickFillFieldIds(result.fields, profile))}>仅选择可快速填写项</button>
     </div>
-    <div className="field-list">{Object.entries(groups).map(([name, fields]) => <section className="field-group" key={name}>
+    <div className="field-list">{Object.entries(groups).sort(([left], [right]) => groupPriority(left) - groupPriority(right) || left.localeCompare(right, 'zh-CN')).map(([name, fields]) => <section className="field-group" key={name}>
       <button className="field-group-header" type="button" aria-expanded={!collapsed.has(name)} onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(name) ? next.delete(name) : next.add(name); return next; })}><span>{name}</span><b>{fields.length}</b></button>
       {!collapsed.has(name) && <div className="field-group-content">{fields.map((match) => {
         const fieldId = match.descriptor.fieldId;

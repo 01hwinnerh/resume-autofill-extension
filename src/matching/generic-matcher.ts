@@ -31,7 +31,10 @@ function genericCandidates(descriptor: PageFieldDescriptor, profile: Profile): M
       }
 
       const { score, reasons } = scoreField(descriptor, profileField, dictionaryField);
-      return score > SCORE_WEIGHTS.typeCompatibility
+      const hasFieldIdentitySignal = reasons.some((reason) => reason.startsWith('页面标签')
+        || reason.startsWith('autocomplete')
+        || reason.startsWith('字段 name 或 id'));
+      return hasFieldIdentitySignal && score > SCORE_WEIGHTS.typeCompatibility
         ? [{ profileKey: profileField.key, score, source: 'generic' as const, reasons }]
         : [];
     })

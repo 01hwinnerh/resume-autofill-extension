@@ -21,6 +21,11 @@ function isAlias(value: string | undefined, aliases: string[]): boolean {
 }
 
 function isCompatible(descriptor: PageFieldDescriptor, profileField: ProfileField): boolean {
+  if (descriptor.kind === 'text' && descriptor.inputType) {
+    const inputType = descriptor.inputType.toLowerCase();
+    if (inputType === 'date' || inputType === 'month') return profileField.type === 'date';
+    if (inputType === 'number') return profileField.type === 'number';
+  }
   switch (profileField.type) {
     case 'text': return descriptor.kind === 'text' || descriptor.kind === 'textarea';
     case 'date':

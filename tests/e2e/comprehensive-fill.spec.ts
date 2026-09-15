@@ -67,6 +67,30 @@ test('fills comprehensive control types, preserves existing value, and never sub
   await expect(page.locator('#submit-status')).toHaveText('尚未提交');
 });
 
+test('rejects invalid date text before it reaches the browser date control', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error') browserErrors.push(message.text()); });
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  await page.goto('/comprehensive-form.html');
+  const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-invalid-date' });
+  const dateField = scan.result.descriptors.find((candidate) => candidate.label === '入学时间');
+  expect(dateField).toBeDefined();
+
+  const response = await runRuntimeMessage(page, {
+    type: 'fill-fields',
+    requestId: 'fill-invalid-date',
+    fields: [{ fieldId: dateField!.fieldId, profileKey: 'educations.0.degree', value: '硕士研究生' }],
+  });
+
+  expect(response.results[0]?.outcome).toEqual({
+    status: 'failed',
+    fieldId: dateField!.fieldId,
+    reason: 'date input requires a valid YYYY-MM-DD value',
+  });
+  await expect(page.locator('#edu-start')).toHaveValue('');
+  expect(browserErrors).toEqual([]);
+});
+
 test('intercepts an explicit manual submit with visible feedback', async ({ page }) => {
   await page.goto('/comprehensive-form.html');
   await page.locator('#submit').click();

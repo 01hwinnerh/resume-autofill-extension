@@ -46,6 +46,31 @@ describe('fillField', () => {
     expect(events).toEqual(['input:true', 'change:true']);
   });
 
+  it('rejects an invalid date value without touching the date input', async () => {
+    const field = fieldFor('<input type="date">', 'text');
+    const element = field.elements[0] as HTMLInputElement;
+    const events = observeEvents(element, ['input', 'change']);
+
+    await expect(fillField(field, '硕士研究生', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'failed', fieldId: 'field-1', reason: 'date input requires a valid YYYY-MM-DD value' });
+
+    expect(element.value).toBe('');
+    expect(events).toEqual([]);
+  });
+
+  it('fills a date input only when the value uses a valid YYYY-MM-DD date', async () => {
+    const field = fieldFor('<input type="date">', 'text');
+    const element = field.elements[0] as HTMLInputElement;
+
+    await expect(fillField(field, '2026-02-28', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect(element.value).toBe('2026-02-28');
+
+    const invalidField = fieldFor('<input type="date">', 'text');
+    await expect(fillField(invalidField, '2026-02-30', { overwrite: false, confirmed: true }))
+      .resolves.toMatchObject({ status: 'failed' });
+  });
+
   it('selects a blank select by option value and emits bubbling events', async () => {
     const field = fieldFor('<select><option value="">Choose</option><option value="engineer">Engineer</option></select>', 'select');
     const element = field.elements[0] as HTMLSelectElement;

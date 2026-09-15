@@ -68,6 +68,32 @@ describe('matchFields', () => {
     expect(match.status).toBe('matched');
   });
 
+  it('does not use a repeated-section index as the only evidence for an unrelated date field', () => {
+    const profile: Profile = { schemaVersion: 1, fields: {
+      'educations.0.degree': { key: 'educations.0.degree', label: '学历', type: 'enum', value: '硕士研究生', policy: 'review' },
+      'educations.0.endDate': { key: 'educations.0.endDate', label: '毕业时间', type: 'date', value: '2026-06-30', policy: 'auto' },
+    } };
+    const [match] = matchFields(
+      [descriptor({ label: '毕业时间', inputType: 'date', sectionLabel: '教育经历', sectionIndex: 0 })],
+      profile,
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected?.profileKey).toBe('educations.0.endDate');
+    expect(match.candidates.some((candidate) => candidate.profileKey === 'educations.0.degree')).toBe(false);
+  });
+
+  it('leaves an unknown date field unmatched instead of borrowing another field from the same section', () => {
+    const [match] = matchFields(
+      [descriptor({ label: '未知日期', inputType: 'date', sectionLabel: '教育经历', sectionIndex: 0 })],
+      profileWith('educations.0.degree', '硕士研究生', { type: 'enum' }),
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected).toBeUndefined();
+    expect(match.candidates).toEqual([]);
+  });
+
   it('does not auto-match a type-incompatible candidate', () => {
     const [match] = matchFields(
       [descriptor({ label: 'Email', kind: 'select', options: [{ label: 'A', value: 'a' }] })],

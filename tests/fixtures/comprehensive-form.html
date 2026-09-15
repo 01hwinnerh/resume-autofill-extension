@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>星途人才｜综合申请表测试页</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#667085; --line:#dfe5ef; --brand:#5b5bd6; --brand-dark:#4444b8; --soft:#f4f6ff; --ok:#087a55; --warn:#9a6700; }
+    * { box-sizing: border-box; }
+    body { margin:0; color:var(--ink); background:linear-gradient(145deg,#eef1ff 0,#f8f9fc 38%,#eef8f6 100%); font:15px/1.55 Inter,"PingFang SC","Microsoft YaHei",sans-serif; }
+    .hero { padding:42px max(24px,calc((100vw - 1180px)/2)); color:white; background:linear-gradient(120deg,#25255d,#5b5bd6 60%,#347d74); }
+    .eyebrow { margin:0 0 8px; letter-spacing:.14em; font-size:12px; font-weight:700; opacity:.78; }
+    h1 { margin:0; font-size:clamp(28px,4vw,44px); line-height:1.15; }
+    .hero p { max-width:760px; margin:14px 0 0; color:#e5e7ff; }
+    .layout { width:min(1180px,calc(100% - 32px)); margin:28px auto 56px; display:grid; grid-template-columns:minmax(0,1fr) 310px; gap:24px; align-items:start; }
+    .card { background:rgba(255,255,255,.96); border:1px solid rgba(223,229,239,.9); border-radius:20px; box-shadow:0 18px 50px rgba(34,45,80,.09); }
+    .guide { position:sticky; top:20px; padding:22px; }
+    .guide h2 { margin:0 0 12px; font-size:18px; }
+    .guide ol { margin:0; padding-left:20px; color:#475467; }
+    .boundary,.scan-note { margin-top:18px; padding:14px; border-radius:12px; background:#fff8e7; color:#694b00; font-size:13px; }
+    .scan-note { background:#edf8f5; color:#176b58; }
+    form { padding:10px 30px 30px; }
+    fieldset { min-width:0; margin:20px 0 0; padding:24px; border:1px solid var(--line); border-radius:16px; }
+    legend { padding:0 10px; font-size:20px; font-weight:750; color:#30306f; }
+    .section-help { margin:-5px 0 18px; color:var(--muted); font-size:13px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:17px 20px; }
+    .field { min-width:0; }
+    .wide { grid-column:1/-1; }
+    label,.label { display:block; margin-bottom:6px; font-size:13px; font-weight:650; }
+    input,select,textarea { width:100%; border:1px solid #cbd3e1; border-radius:10px; background:white; color:var(--ink); padding:10px 12px; font:inherit; transition:.18s; }
+    input:focus,select:focus,textarea:focus { outline:3px solid rgba(91,91,214,.14); border-color:var(--brand); }
+    textarea { min-height:92px; resize:vertical; }
+    .choices { display:flex; flex-wrap:wrap; gap:10px 18px; padding-top:5px; }
+    .choices label { display:flex; gap:8px; align-items:center; margin:0; font-weight:500; }
+    .choices input { width:auto; accent-color:var(--brand); }
+    .hint { margin:6px 0 0; color:var(--muted); font-size:12px; }
+    .manual { border-style:dashed; background:#fafbfc; }
+    .actions { display:flex; align-items:center; gap:16px; margin-top:24px; }
+    button { border:0; border-radius:11px; padding:12px 22px; color:white; background:var(--brand); font:700 15px inherit; cursor:pointer; }
+    button:hover { background:var(--brand-dark); }
+    #submit-status { color:var(--ok); font-weight:650; }
+    @media (max-width:900px) { .layout { grid-template-columns:1fr; } .guide { position:static; order:-1; } }
+    @media (max-width:620px) { .layout { width:min(100% - 20px,1180px); } form { padding:6px 14px 22px; } fieldset { padding:18px 14px; } .grid { grid-template-columns:1fr; } .wide { grid-column:auto; } }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <p class="eyebrow">RESUME AUTOFILL · LOCAL FIXTURE</p>
+    <h1>星途人才综合申请表</h1>
+    <p>这是纯本地、无网络请求的插件验证页面。页面数据均为虚构测试内容，适合检查扫描、匹配、确认与填充流程。</p>
+  </header>
+  <main class="layout">
+    <form id="application-form" class="card" novalidate>
+      <fieldset><legend>基本信息</legend>
+        <p class="section-help">先确认已有姓名保持不变，再检查联系方式与个人概述。</p>
+        <div class="grid">
+          <div class="field"><label for="full-name">姓名</label><input id="full-name" name="fullName" autocomplete="name" value="测试候选人（已有值）" /></div>
+          <div class="field"><label for="email">电子邮箱</label><input id="email" name="email" type="email" autocomplete="email" placeholder="candidate@example.test" /></div>
+          <div class="field"><label for="phone">联系电话</label><input id="phone" name="mobile" type="tel" autocomplete="tel" placeholder="仅使用虚构号码" /></div>
+          <div class="field"><label for="birth-date">出生日期</label><input id="birth-date" name="birthDate" type="date" autocomplete="bday" /></div>
+          <div class="field wide"><label for="summary">个人概述</label><textarea id="summary" name="summary" autocomplete="off" placeholder="简要介绍专业方向与优势"></textarea></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>教育经历</legend>
+        <p class="section-help">覆盖基础字段及 GPA、排名、研究方向、荣誉、课程、统招等增强字段。</p>
+        <div class="grid">
+          <div class="field"><label for="edu-school">毕业院校</label><input id="edu-school" name="educationSchool" autocomplete="organization" /></div>
+          <div class="field"><label for="edu-department">院系</label><input id="edu-department" name="educationDepartment" /></div>
+          <div class="field"><label for="edu-degree">学历</label><select id="edu-degree" name="educationDegree"><option value="">请选择</option><option value="bachelor">本科</option><option value="master">硕士</option><option value="doctor">博士</option></select></div>
+          <div class="field"><label for="edu-degree-type">学历类型</label><select id="edu-degree-type" name="degreeType"><option value="">请选择</option><option value="academic">学术型</option><option value="professional">专业型</option></select></div>
+          <div class="field"><label for="edu-major">所学专业</label><input id="edu-major" name="educationMajor" /></div>
+          <div class="field"><label for="edu-minor">辅修专业</label><input id="edu-minor" name="educationMinor" /></div>
+          <div class="field"><label for="edu-start">入学时间</label><input id="edu-start" name="educationStartDate" type="date" /></div>
+          <div class="field"><label for="edu-end">毕业时间</label><input id="edu-end" name="educationEndDate" type="date" /></div>
+          <div class="field"><label for="edu-gpa">GPA</label><input id="edu-gpa" name="gpa" type="number" min="0" max="5" step="0.01" /></div>
+          <div class="field"><label for="edu-gpa-scale">GPA 满分制</label><input id="edu-gpa-scale" name="gpaScale" type="number" min="4" max="100" step="1" /></div>
+          <div class="field"><label for="edu-rank">专业排名</label><input id="edu-rank" name="classRank" placeholder="例如：前 10%" /></div>
+          <div class="field"><label for="edu-location">学校所在地</label><input id="edu-location" name="schoolLocation" /></div>
+          <div class="field wide"><label for="edu-research">研究方向</label><input id="edu-research" name="researchArea" /></div>
+          <div class="field wide"><label for="edu-courses">主修课程</label><textarea id="edu-courses" name="courses"></textarea></div>
+          <div class="field wide"><label for="edu-honors">荣誉奖项</label><textarea id="edu-honors" name="honors"></textarea></div>
+          <div class="field wide"><label for="edu-campus">校园经历</label><textarea id="edu-campus" name="campusExperience"></textarea></div>
+          <div class="field wide"><label for="edu-thesis">毕业论文</label><textarea id="edu-thesis" name="thesis"></textarea></div>
+          <div class="field wide"><span class="label">是否统招</span><div class="choices"><label for="edu-fulltime-yes"><input id="edu-fulltime-yes" name="fullTimeEducation" type="radio" value="yes" />是</label><label for="edu-fulltime-no"><input id="edu-fulltime-no" name="fullTimeEducation" type="radio" value="no" />否</label></div></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>工作经历</legend>
+        <div class="grid">
+          <div class="field"><label for="work-company">公司名称</label><input id="work-company" name="workCompany" autocomplete="organization" /></div>
+          <div class="field"><label for="work-title">职位</label><input id="work-title" name="workTitle" autocomplete="organization-title" /></div>
+          <div class="field"><label for="work-start">工作开始时间</label><input id="work-start" name="workStartDate" type="date" /></div>
+          <div class="field"><label for="work-end">工作结束时间</label><input id="work-end" name="workEndDate" type="date" /></div>
+          <div class="field"><label for="work-department">所在部门</label><input id="work-department" name="workDepartment" /></div>
+          <div class="field"><label for="work-location">工作地点</label><input id="work-location" name="workLocation" /></div>
+          <div class="field"><label for="work-industry">所属行业</label><select id="work-industry" name="industry"><option value="">请选择</option><option value="internet">互联网</option><option value="finance">金融</option><option value="manufacturing">制造业</option></select></div>
+          <div class="field"><label for="work-company-type">公司性质</label><select id="work-company-type" name="companyType"><option value="">请选择</option><option value="private">民营</option><option value="state">国有</option><option value="foreign">外资</option></select></div>
+          <div class="field"><label for="work-company-size">公司规模</label><input id="work-company-size" name="companySize" /></div>
+          <div class="field"><label for="work-management">管理人数</label><input id="work-management" name="managementCount" type="number" min="0" step="1" /></div>
+          <div class="field"><label for="work-skills">工作技能</label><input id="work-skills" name="workSkills" /></div>
+          <div class="field"><label for="work-reports">汇报对象</label><input id="work-reports" name="reportsTo" /></div>
+          <div class="field"><label for="work-salary">当前薪资</label><input id="work-salary" name="currentSalary" /></div>
+          <div class="field"><label for="work-leaving">离职原因</label><input id="work-leaving" name="leavingReason" /></div>
+          <div class="field"><label for="work-reference">证明人</label><input id="work-reference" name="referenceName" /></div>
+          <div class="field"><label for="work-reference-phone">证明人电话</label><input id="work-reference-phone" name="referencePhone" type="tel" /></div>
+          <div class="field wide"><label for="work-description">工作内容</label><textarea id="work-description" name="workDescription"></textarea></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>项目经历</legend>
+        <div class="grid">
+          <div class="field"><label for="project-name">项目名称</label><input id="project-name" name="projectName" /></div>
+          <div class="field"><label for="project-role">项目角色</label><input id="project-role" name="projectRole" /></div>
+          <div class="field"><label for="project-start">项目开始时间</label><input id="project-start" name="projectStartDate" type="date" /></div>
+          <div class="field"><label for="project-end">项目结束时间</label><input id="project-end" name="projectEndDate" type="date" /></div>
+          <div class="field"><label for="project-company">关联公司</label><input id="project-company" name="projectCompany" /></div>
+          <div class="field"><label for="project-status">项目状态</label><select id="project-status" name="projectStatus"><option value="">请选择</option><option value="planning">规划中</option><option value="active">进行中</option><option value="completed">已完成</option></select></div>
+          <div class="field"><label for="project-scale">项目规模</label><input id="project-scale" name="projectScale" /></div>
+          <div class="field"><label for="project-team-size">团队人数</label><input id="project-team-size" name="projectTeamSize" type="number" min="1" step="1" /></div>
+          <div class="field wide"><label for="project-description">项目描述</label><textarea id="project-description" name="projectDescription"></textarea></div>
+          <div class="field wide"><label for="project-responsibilities">项目职责</label><textarea id="project-responsibilities" name="projectResponsibilities"></textarea></div>
+          <div class="field wide"><label for="project-achievements">项目成果</label><textarea id="project-achievements" name="projectAchievements"></textarea></div>
+          <div class="field wide"><label for="project-attachment">附件引用</label><input id="project-attachment" name="projectAttachmentReference" type="text" placeholder="仅填写附件名称或公开测试链接" /></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>求职意向 / 技能</legend>
+        <div class="grid">
+          <div class="field"><label for="target-role">期望职位</label><input id="target-role" name="targetRole" /></div>
+          <div class="field"><label for="target-city">意向城市</label><input id="target-city" name="targetCity" autocomplete="address-level2" /></div>
+          <div class="field"><label for="expected-salary">期望薪资</label><input id="expected-salary" name="expectedSalary" type="number" min="0" step="1000" /></div>
+          <div class="field"><label for="availability">到岗日期</label><input id="availability" name="availabilityDate" type="date" /></div>
+          <div class="field wide"><label for="skills">专业技能</label><textarea id="skills" name="skills" placeholder="用逗号分隔技能"></textarea></div>
+          <div class="field wide"><label for="ambiguous-code">编号</label><input id="ambiguous-code" name="code" aria-describedby="ambiguous-hint" /><p id="ambiguous-hint" class="hint">低信息/歧义字段：用于观察插件是否降级为待确认，而不是武断匹配。</p></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>授权与边界</legend>
+        <div class="grid">
+          <div class="field wide"><span class="label">工作方式</span><div class="choices"><label for="mode-remote"><input id="mode-remote" name="workMode" type="radio" value="remote" />远程</label><label for="mode-hybrid"><input id="mode-hybrid" name="workMode" type="radio" value="hybrid" />混合办公</label><label for="mode-office"><input id="mode-office" name="workMode" type="radio" value="office" />现场办公</label></div></div>
+          <div class="field wide"><div class="choices"><label for="consent"><input id="consent" name="consent" type="checkbox" />同意在本地测试中处理以上虚构信息</label></div></div>
+          <div class="field wide manual"><label for="resume-file">简历附件（需手工处理）</label><input id="resume-file" name="resumeFile" type="file" accept=".pdf,.doc,.docx" /><p class="hint">插件不应扫描或填充文件控件；本页面不会上传文件。</p></div>
+        </div>
+      </fieldset>
+      <div class="actions"><button id="submit" type="submit">提交测试申请</button><span id="submit-status" role="status" aria-live="polite">尚未提交</span></div>
+    </form>
+
+    <aside class="guide card" aria-labelledby="guide-title">
+      <h2 id="guide-title">手工验证步骤</h2>
+      <ol><li>运行 <code>npm run fixtures:serve</code> 并打开根路径。</li><li>使用新版插件扫描页面，核对分区与字段统计。</li><li>查看低置信度“编号”是否进入待确认。</li><li>确认后填充，检查已有姓名、文件控件与提交状态。</li></ol>
+      <div class="scan-note"><strong>扫描统计占位</strong><br />请在插件中核对：已识别、待确认、已跳过、填充成功与失败数量。此区域不读取插件数据。</div>
+      <div class="boundary"><strong>安全边界</strong><br />仅使用虚构数据；不联网、不上传附件；已有值不得覆盖；扫描与自动填充不得触发提交。文件选择及最终提交必须由用户手工完成。</div>
+    </aside>
+  </main>
+  <script>
+    window.__submitted = false;
+    document.querySelector('#application-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      window.__submitted = true;
+      document.querySelector('#submit-status').textContent = '测试提交已拦截';
+    });
+  </script>
+</body>
+</html>

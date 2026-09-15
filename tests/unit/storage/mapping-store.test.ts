@@ -83,6 +83,16 @@ describe('MappingStore', () => {
     await expect(store.list()).resolves.toEqual([mapping('first'), mapping('second')]);
   });
 
+  it('deletes mappings by ID or profile key', async () => {
+    const store = new MappingStore(new MemoryStorage());
+    await store.upsert(mapping('first'));
+    await store.upsert(mapping('second'));
+    await store.delete('first');
+    expect(await store.list()).toEqual([mapping('second')]);
+    await store.deleteByProfileKey('profile.second');
+    expect(await store.list()).toEqual([]);
+  });
+
   it('translates storage failures into a write StorageError', async () => {
     const cause = new Error('backend failed');
     const storage: StoragePort = {

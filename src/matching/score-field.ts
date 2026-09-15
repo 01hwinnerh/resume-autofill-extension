@@ -4,17 +4,14 @@ import type { ProfileField } from '../shared/profile';
 import type { DictionaryField } from './field-dictionary';
 
 export const SCORE_WEIGHTS = {
-  labelAlias: 0.55,
-  autocomplete: 0.20,
+  labelAlias: 0.5,
+  autocomplete: 0.2,
   nameOrIdAlias: 0.15,
-  sectionLabel: 0.05,
+  sectionLabel: 0.1,
   typeCompatibility: 0.05,
 } as const;
 
-export interface ScoredField {
-  score: number;
-  reasons: string[];
-}
+export interface ScoredField { score: number; reasons: string[] }
 
 function isAlias(value: string | undefined, aliases: string[]): boolean {
   const normalizedValue = normalizeLabel(value);
@@ -23,17 +20,12 @@ function isAlias(value: string | undefined, aliases: string[]): boolean {
 
 function isCompatible(descriptor: PageFieldDescriptor, profileField: ProfileField): boolean {
   switch (profileField.type) {
-    case 'text':
-      return descriptor.kind === 'text' || descriptor.kind === 'textarea';
+    case 'text': return descriptor.kind === 'text' || descriptor.kind === 'textarea';
     case 'date':
-    case 'number':
-      return descriptor.kind === 'text';
-    case 'enum':
-      return descriptor.kind === 'select' || descriptor.kind === 'radio';
-    case 'boolean':
-      return descriptor.kind === 'checkbox';
-    case 'multiselect':
-      return descriptor.kind === 'select';
+    case 'number': return descriptor.kind === 'text';
+    case 'enum': return descriptor.kind === 'select' || descriptor.kind === 'radio' || descriptor.kind === 'text';
+    case 'boolean': return descriptor.kind === 'checkbox' || descriptor.kind === 'radio' || descriptor.kind === 'select';
+    case 'multiselect': return descriptor.kind === 'select';
   }
 }
 
@@ -44,31 +36,25 @@ export function scoreField(
 ): ScoredField {
   let score = 0;
   const reasons: string[] = [];
-
   if (isAlias(descriptor.label, dictionaryField.aliases)) {
     score += SCORE_WEIGHTS.labelAlias;
-    reasons.push(`Label "${descriptor.label}" matches a ${profileField.key} alias.`);
+    reasons.push(`页面标签“${descriptor.label}”匹配资料字段“${profileField.label}”`);
   }
-
   if (isAlias(descriptor.autocomplete, dictionaryField.autocompleteAliases)) {
     score += SCORE_WEIGHTS.autocomplete;
-    reasons.push(`Autocomplete "${descriptor.autocomplete}" matches ${profileField.key}.`);
+    reasons.push(`autocomplete“${descriptor.autocomplete}”匹配 ${profileField.key}`);
   }
-
   if (isAlias(descriptor.name, dictionaryField.aliases) || isAlias(descriptor.htmlId, dictionaryField.aliases)) {
     score += SCORE_WEIGHTS.nameOrIdAlias;
-    reasons.push(`Field name or ID matches a ${profileField.key} alias.`);
+    reasons.push(`字段 name 或 id 匹配 ${profileField.key}`);
   }
-
-  if (isAlias(descriptor.sectionLabel, dictionaryField.aliases)) {
+  if (isAlias(descriptor.sectionLabel, dictionaryField.sectionAliases)) {
     score += SCORE_WEIGHTS.sectionLabel;
-    reasons.push(`Section "${descriptor.sectionLabel}" matches a ${profileField.key} alias.`);
+    reasons.push(`分组“${descriptor.sectionLabel}”匹配${dictionaryField.sectionAliases[0] ?? '资料'}经历`);
   }
-
   if (isCompatible(descriptor, profileField)) {
     score += SCORE_WEIGHTS.typeCompatibility;
-    reasons.push(`Page field type ${descriptor.kind} is compatible with profile type ${profileField.type}.`);
+    reasons.push(`页面控件类型 ${descriptor.kind} 与资料类型 ${profileField.type} 兼容`);
   }
-
   return { score: Number(Math.min(1, Math.max(0, score)).toFixed(2)), reasons };
 }

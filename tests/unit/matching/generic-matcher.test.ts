@@ -64,8 +64,8 @@ describe('matchFields', () => {
     );
 
     expect(match.selected?.profileKey).toBe('preference.city');
-    expect(match.selected?.score).toBe(0.6);
-    expect(match.status).toBe('needs_confirmation');
+    expect(match.selected?.score).toBe(0.55);
+    expect(match.status).toBe('matched');
   });
 
   it('does not auto-match a type-incompatible candidate', () => {
@@ -75,7 +75,7 @@ describe('matchFields', () => {
       { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
     );
 
-    expect(match.selected?.score).toBe(0.55);
+    expect(match.selected?.score).toBe(0.5);
     expect(match.status).toBe('needs_confirmation');
   });
 
@@ -114,6 +114,18 @@ describe('matchFields', () => {
     expect(match.status).toBe('matched');
   });
 
+  it('does not let an explicit user mapping bypass never policy', () => {
+    const field = descriptor({ label: 'Name', fingerprint: 'text|name' });
+    const [match] = matchFields(
+      [field],
+      profileWith('contact.email', 'candidate@example.test', { policy: 'never' }),
+      { mappings: [{ id: 'never', scope: { host: 'example.test' }, fingerprint: field.fingerprint, profileKey: 'contact.email', createdAt: '2026-09-15T00:00:00.000Z' }], pageContext: { host: 'example.test', path: '/apply' } },
+    );
+
+    expect(match.selected?.source).toBe('user');
+    expect(match.status).toBe('unsupported');
+  });
+
   it('falls back to generic matching when a mapping scope does not match the page', () => {
     const field = descriptor({
       label: 'Name',
@@ -145,6 +157,6 @@ describe('matchFields', () => {
       profileKey: 'identity.name',
       source: 'generic',
     });
-    expect(match.status).toBe('needs_confirmation');
+    expect(match.status).toBe('matched');
   });
 });

@@ -38,6 +38,8 @@ export interface PageFieldDescriptor {
   sectionLabel?: string;
   /** Stable 0-based index of a repeated education/work/project container. */
   sectionIndex?: number;
+  /** Non-sensitive evidence describing where site-specific semantics came from. */
+  semanticSource?: string;
   framePath: number[];
   fingerprint: string;
 }

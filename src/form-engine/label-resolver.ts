@@ -1,13 +1,5 @@
 import { normalizeLabel } from './normalize-label';
 
-const COMPONENT_FIELD_CONTAINERS = [
-  '.semi-form-field',
-  '[class*="form-item"]',
-  '[class*="formItem"]',
-  '[class*="field-item"]',
-  '[data-field-name]',
-];
-
 const COMPONENT_LABEL_SELECTORS = [
   '.semi-form-field-label-text',
   '.semi-form-field-label',
@@ -17,6 +9,16 @@ const COMPONENT_LABEL_SELECTORS = [
   '[data-field-label]',
   'label',
 ];
+
+function isComponentFieldContainer(element: HTMLElement): boolean {
+  if (element.matches('.semi-form-field, [data-field-name]')) return true;
+  const tokens = element.className.toString().split(/\s+/).filter(Boolean);
+  return tokens.some((token) => {
+    const value = token.toLowerCase();
+    if (/(?:label|control|children|wrapper|message|help|extra)$/.test(value)) return false;
+    return /form[-_]?item|field[-_]?item/.test(value);
+  });
+}
 
 function cleanLabel(value: string | null | undefined): string | undefined {
   const normalized = normalizeLabel(value).replace(/^[*＊]\s*/, '').replace(/\s*[:：*＊]\s*$/, '').trim();
@@ -50,14 +52,15 @@ function dataLabel(element: HTMLElement): string | undefined {
 }
 
 function componentLabel(element: HTMLElement): string | undefined {
-  const container = element.closest<HTMLElement>(COMPONENT_FIELD_CONTAINERS.join(','));
-  if (!container) return undefined;
-  for (const selector of COMPONENT_LABEL_SELECTORS) {
-    const candidates = Array.from(container.querySelectorAll<HTMLElement>(selector));
-    for (const candidate of candidates) {
-      if (candidate === element || candidate.contains(element)) continue;
-      const value = cleanLabel(candidate.getAttribute('data-field-label') ?? candidate.textContent);
-      if (value) return value;
+  for (let container: HTMLElement | null = element.parentElement; container; container = container.parentElement) {
+    if (!isComponentFieldContainer(container)) continue;
+    for (const selector of COMPONENT_LABEL_SELECTORS) {
+      const candidates = Array.from(container.querySelectorAll<HTMLElement>(selector));
+      for (const candidate of candidates) {
+        if (candidate === element || candidate.contains(element)) continue;
+        const value = cleanLabel(candidate.getAttribute('data-field-label') ?? candidate.textContent);
+        if (value) return value;
+      }
     }
   }
   return undefined;
@@ -97,6 +100,8 @@ function componentSectionHeading(container: HTMLElement): string | undefined {
 }
 
 export function resolveLabel(element: HTMLElement): string {
+  const schema = cleanLabel(element.getAttribute('data-resume-autofill-schema-label'));
+  if (schema) return schema;
   const associated = labelFor(element);
   if (associated) return associated;
   const wrapping = cleanLabel(element.closest('label')?.textContent);
@@ -119,6 +124,8 @@ export function resolveLabel(element: HTMLElement): string {
 }
 
 export function resolveSectionLabel(element: HTMLElement): string | undefined {
+  const schema = cleanLabel(element.getAttribute('data-resume-autofill-schema-section'));
+  if (schema) return schema;
   for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
     if (ancestor.tagName === 'FIELDSET') {
       const legend = directLegend(ancestor);

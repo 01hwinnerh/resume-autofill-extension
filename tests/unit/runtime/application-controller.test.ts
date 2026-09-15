@@ -94,6 +94,15 @@ describe('application controller', () => {
     const result = await createApplicationController(dependencies(browser, 5000, registry)).scanActiveTab();
 
     expect(result.adapterId).toBe('fixture-adapter');
+    expect(browser.scripting.executeScript).toHaveBeenNthCalledWith(1, {
+      target: { tabId: 7 },
+      files: ['bytedance-page-runtime.js'],
+      world: 'MAIN',
+    });
+    expect(browser.scripting.executeScript).toHaveBeenNthCalledWith(2, {
+      target: { tabId: 7 },
+      files: ['form-runtime.js'],
+    });
     expect(result.fields[0]?.selected).toMatchObject({ profileKey: 'contact.email', source: 'adapter', score: 0.96 });
   });
 

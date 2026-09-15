@@ -29,11 +29,18 @@ describe('label resolver', () => {
         <div class="semi-form-field-main"><input id="semi-field" /></div>
       </div>
       <div class="custom-form-item"><div class="custom-form-item-label">手机号码</div><input id="component-field" /></div>
+      <div class="atsx-form-item">
+        <div class="atsx-form-item-label"><label>学校名称：</label></div>
+        <div class="atsx-form-item-control-wrapper"><div class="atsx-form-item-control"><span class="atsx-form-item-children"><input id="atsx-field" /></span></div></div>
+      </div>
+      <input id="schema-field" data-resume-autofill-schema-label="专业" />
     `;
 
     expect(resolveLabel(document.querySelector('#aria-field')!)).toBe('电子邮箱');
     expect(resolveLabel(document.querySelector('#semi-field')!)).toBe('毕业院校');
     expect(resolveLabel(document.querySelector('#component-field')!)).toBe('手机号码');
+    expect(resolveLabel(document.querySelector('#atsx-field')!)).toBe('学校名称');
+    expect(resolveLabel(document.querySelector('#schema-field')!)).toBe('专业');
   });
 
   it('uses only explicit semantic section context', () => {

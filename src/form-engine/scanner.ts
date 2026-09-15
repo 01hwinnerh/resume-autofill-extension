@@ -43,11 +43,16 @@ function buildSectionIndexes(controls: Element[]): Map<HTMLElement, number> {
 
 function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFieldKind, currentValue: FieldValue, options: Array<{ label: string; value: string }>, fieldId: string, context: ScanContext, sectionIndexes: Map<HTMLElement, number>): RuntimePageField {
   const label = resolveLabel(element); const name = optionalAttribute(element, 'name'); const htmlId = element.id || undefined;
-  const sectionLabel = resolveSectionLabel(element); const container = sectionContainer(element); const sectionIndex = repeatCategory(sectionLabel) && container ? sectionIndexes.get(container) : undefined;
+  const sectionLabel = resolveSectionLabel(element); const container = sectionContainer(element);
+  const annotatedIndex = Number.parseInt(element.getAttribute('data-resume-autofill-section-index') ?? '', 10);
+  const sectionIndex = Number.isFinite(annotatedIndex)
+    ? annotatedIndex
+    : repeatCategory(sectionLabel) && container ? sectionIndexes.get(container) : undefined;
   return {
     fieldId, kind, inputType: element instanceof HTMLInputElement ? element.type.toLowerCase() : undefined,
     label, name, htmlId, placeholder: optionalAttribute(element, 'placeholder'), ariaLabel: optionalAttribute(element, 'aria-label'),
     autocomplete: optionalAttribute(element, 'autocomplete'), options, currentValue, sectionLabel, sectionIndex,
+    semanticSource: optionalAttribute(element, 'data-resume-autofill-semantic-source'),
     framePath: [...context.framePath],
     // sectionIndex deliberately stays out of the fingerprint to preserve old saved mappings.
     fingerprint: createFingerprint({ kind, label, name, htmlId, sectionLabel, framePath: context.framePath }),

@@ -845,7 +845,38 @@ export interface FillSummary {
   skippedExisting: string[];
   failed: Array<{ fieldId: string; reason: string }>;
 }
+
+export type RuntimeCommand =
+  | { type: 'scan-active-tab' }
+  | { type: 'fill-confirmed-fields'; fields: ConfirmedFill[] };
+
+export interface RuntimeError {
+  code:
+    | 'TAB_UNAVAILABLE'
+    | 'PERMISSION_DENIED'
+    | 'CONTENT_SCRIPT_UNAVAILABLE'
+    | 'CONTENT_SCRIPT_TIMEOUT'
+    | 'SCAN_FAILED'
+    | 'FIELD_OPERATION_FAILED';
+  message: string;
+  retryable: boolean;
+}
+
+export interface PageFillResult {
+  fieldId: string;
+  outcome: FillOutcome;
+  verification?: VerificationOutcome;
+}
+
+export type PageResponse =
+  | { type: 'scan-result'; requestId: string; result: ScanResult }
+  | { type: 'fill-result'; requestId: string; results: PageFillResult[] }
+  | { type: 'error'; requestId: string; error: RuntimeError };
+
+export const CONTENT_SCRIPT_TIMEOUT_MS = 5000;
 ```
+
+Export `RuntimeCommand`, `PageFillResult`, and `PageResponse` from `src/shared/messages.ts`; export `RuntimeError` and `CONTENT_SCRIPT_TIMEOUT_MS` from `src/runtime/runtime-errors.ts`. Import `FillOutcome` and `VerificationOutcome` as type-only dependencies so the message contracts remain serializable.
 
 - [ ] **Step 1: Write controller tests with fake tab and fake page ports.**
 
@@ -866,9 +897,9 @@ The background path must:
 1. Identify the active tab.
 2. Request or use the user-gesture-derived active-tab access.
 3. Inject the WXT unlisted-script output file `form-runtime.js` only when a scan or confirmed fill is requested.
-4. Send `scan-page` or `fill-fields` to the content script.
+4. Send `scan-page` or `fill-fields` to the content script and expect the discriminated `PageResponse` envelope.
 5. Load profile and mappings in the extension context, not in the page context.
-6. Return serializable results to the side panel.
+6. Aggregate per-field `PageFillResult` values into `FillSummary` and return serializable results to the side panel.
 
 The content script must keep an in-memory `fieldId → RuntimePageField` map for the current page, re-resolve a field by fingerprint after a page rerender, and reject unknown field IDs without mutating any control.
 
@@ -881,13 +912,15 @@ await browser.scripting.executeScript({
 });
 ```
 
+Use `CONTENT_SCRIPT_TIMEOUT_MS = 5000` for injection and message responses. A scan timeout is retryable by a new user action; a fill timeout is reported without automatic retry.
+
 - [ ] **Step 4: Make injection and message handling idempotent.**
 
 Use a page-local marker so repeated scans do not install duplicate message listeners. A scan must only return descriptors. A fill command must contain only explicit `ConfirmedFill` records selected by the user.
 
 - [ ] **Step 5: Translate failures into non-sensitive runtime errors.**
 
-Use stable error codes such as `TAB_UNAVAILABLE`, `PERMISSION_DENIED`, `CONTENT_SCRIPT_UNAVAILABLE`, `SCAN_FAILED`, and `FIELD_OPERATION_FAILED`. Do not put URLs, profile values, or raw page HTML into error text sent to the side panel.
+Use the stable error codes defined by `RuntimeError`; set `retryable` only for permission/injection/scan failures that a new user action can reasonably retry. Do not put URLs, profile values, or raw page HTML into error text sent to the side panel.
 
 - [ ] **Step 6: Run tests, build, and commit.**
 

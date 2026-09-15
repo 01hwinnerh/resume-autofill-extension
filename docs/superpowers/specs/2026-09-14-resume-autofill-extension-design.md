@@ -176,7 +176,7 @@ Adapter 应优先采用配置化规则，只有复杂控件才增加专用逻辑
 - 用户手动修改后的内容不能被后续自动操作覆盖；
 - 用户明确操作后才保存新的自定义映射。
 
-侧边栏到 Background 使用独立的 UI 命令，不复用页面内部消息。页面响应必须使用可区分的 `scan-result`、`fill-result` 或 `error` 结构。Content Script 返回逐字段填写和校验结果，由 Controller 聚合成整体摘要。
+侧边栏到 Background 使用独立的 UI 命令，不复用页面内部消息。页面响应必须使用可区分的 `scan-result`、`fill-result` 或 `error` 结构。页面侧的 `scan-result` 只返回不含个人资料的字段描述，Background 在扩展上下文完成匹配后再生成 `ScanResult` 给侧边栏；Content Script 返回逐字段填写和校验结果，由 Controller 聚合成整体摘要。
 
 Content Script 注入和消息响应的超时为 5 秒。扫描超时由用户重新触发；填写超时不自动重试，避免重复写入。错误响应只包含稳定错误码、用户可读消息和是否可重试，不包含个人资料值或原始页面内容。
 

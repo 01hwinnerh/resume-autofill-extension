@@ -868,15 +868,20 @@ export interface PageFillResult {
   verification?: VerificationOutcome;
 }
 
+export interface PageScanResult {
+  descriptors: PageFieldDescriptor[];
+  adapterId?: string;
+}
+
 export type PageResponse =
-  | { type: 'scan-result'; requestId: string; result: ScanResult }
+  | { type: 'scan-result'; requestId: string; result: PageScanResult }
   | { type: 'fill-result'; requestId: string; results: PageFillResult[] }
   | { type: 'error'; requestId: string; error: RuntimeError };
 
 export const CONTENT_SCRIPT_TIMEOUT_MS = 5000;
 ```
 
-Export `RuntimeCommand`, `PageFillResult`, and `PageResponse` from `src/shared/messages.ts`; export `RuntimeError` and `CONTENT_SCRIPT_TIMEOUT_MS` from `src/runtime/runtime-errors.ts`. Import `FillOutcome` and `VerificationOutcome` as type-only dependencies so the message contracts remain serializable.
+Export `RuntimeCommand`, `PageScanResult`, `PageFillResult`, and `PageResponse` from `src/shared/messages.ts`; export `RuntimeError` and `CONTENT_SCRIPT_TIMEOUT_MS` from `src/runtime/runtime-errors.ts`. Import `FillOutcome` and `VerificationOutcome` as type-only dependencies so the message contracts remain serializable.
 
 - [ ] **Step 1: Write controller tests with fake tab and fake page ports.**
 
@@ -898,7 +903,7 @@ The background path must:
 2. Request or use the user-gesture-derived active-tab access.
 3. Inject the WXT unlisted-script output file `form-runtime.js` only when a scan or confirmed fill is requested.
 4. Send `scan-page` or `fill-fields` to the content script and expect the discriminated `PageResponse` envelope.
-5. Load profile and mappings in the extension context, not in the page context.
+5. Load profile and mappings in the extension context, match returned descriptors there, and return `ScanResult` to the side panel; never send profile values to the page for scanning.
 6. Aggregate per-field `PageFillResult` values into `FillSummary` and return serializable results to the side panel.
 
 The content script must keep an in-memory `fieldId → RuntimePageField` map for the current page, re-resolve a field by fingerprint after a page rerender, and reject unknown field IDs without mutating any control.

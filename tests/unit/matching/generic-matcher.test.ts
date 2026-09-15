@@ -160,3 +160,34 @@ describe('matchFields', () => {
     expect(match.status).toBe('matched');
   });
 });
+
+
+describe('mapping scope priority and repeated section matching', () => {
+  it('prefers path over host over global for the same fingerprint', () => {
+    const field = descriptor({ fingerprint: 'same', label: 'Email' });
+    const profile: Profile = { schemaVersion: 1, fields: {
+      global: { key: 'global', label: 'Global', type: 'text', value: 'g', policy: 'auto' },
+      host: { key: 'host', label: 'Host', type: 'text', value: 'h', policy: 'auto' },
+      path: { key: 'path', label: 'Path', type: 'text', value: 'p', policy: 'auto' },
+    } };
+    const mappings: UserFieldMapping[] = [
+      { id: 'g', scope: { kind: 'global' }, fingerprint: 'same', profileKey: 'global', createdAt: '' },
+      { id: 'h', scope: { kind: 'host', host: 'job.test' }, fingerprint: 'same', profileKey: 'host', createdAt: '' },
+      { id: 'p', scope: { kind: 'path', host: 'job.test', path: '/apply' }, fingerprint: 'same', profileKey: 'path', createdAt: '' },
+    ];
+    expect(matchFields([field], profile, { mappings, pageContext: { host: 'job.test', path: '/apply' } })[0].selected?.profileKey).toBe('path');
+    expect(matchFields([field], profile, { mappings, pageContext: { host: 'job.test', path: '/other' } })[0].selected?.profileKey).toBe('host');
+    expect(matchFields([field], profile, { mappings, pageContext: { host: 'other.test', path: '/' } })[0].selected?.profileKey).toBe('global');
+  });
+
+  it('uses sectionIndex to choose the corresponding profile record', () => {
+    const fields = [descriptor({ fieldId: 'edu-2', label: '学校', sectionLabel: '教育经历', sectionIndex: 1 })];
+    const profile: Profile = { schemaVersion: 1, fields: {
+      'educations.0.school': { key: 'educations.0.school', label: '学校', type: 'text', value: '第一大学', policy: 'auto' },
+      'educations.1.school': { key: 'educations.1.school', label: '学校', type: 'text', value: '第二大学', policy: 'auto' },
+    } };
+    const [match] = matchFields(fields, profile, { mappings: [], pageContext: { host: 'job.test', path: '/' } });
+    expect(match.selected?.profileKey).toBe('educations.1.school');
+    expect(match.candidates.find((item) => item.profileKey === 'educations.0.school')!.score).toBeLessThan(match.selected!.score);
+  });
+});

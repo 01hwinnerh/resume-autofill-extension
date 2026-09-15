@@ -1,5 +1,5 @@
 import type { FieldMatch, MatchCandidate, PageFieldDescriptor } from '../shared/form';
-import type { UserFieldMapping } from '../shared/mapping';
+import { normalizeMappingScope, type UserFieldMapping } from '../shared/mapping';
 import type { Profile } from '../shared/profile';
 import { assignConfidenceStatus } from './confidence';
 import { findDictionaryField } from './field-dictionary';
@@ -38,12 +38,11 @@ function genericCandidates(descriptor: PageFieldDescriptor, profile: Profile): M
     .sort((left, right) => right.score - left.score);
 }
 
-function mappingAppliesToPage(
-  mapping: UserFieldMapping,
-  pageContext: MatchOptions['pageContext'],
-): boolean {
-  return mapping.scope.host === pageContext.host
-    && (mapping.scope.path === undefined || mapping.scope.path === pageContext.path);
+function mappingPriority(mapping: UserFieldMapping, pageContext: MatchOptions['pageContext']): number {
+  const scope = normalizeMappingScope(mapping.scope);
+  if (scope.kind === 'path') return scope.host === pageContext.host && scope.path === pageContext.path ? 3 : 0;
+  if (scope.kind === 'host') return scope.host === pageContext.host ? 2 : 0;
+  return 1;
 }
 
 function matchField(
@@ -52,9 +51,9 @@ function matchField(
   mappings: UserFieldMapping[],
   pageContext: MatchOptions['pageContext'],
 ): FieldMatch {
-  const mapping = mappings.find((item) => (
-    item.fingerprint === descriptor.fingerprint && mappingAppliesToPage(item, pageContext)
-  ));
+  const mapping = mappings
+    .filter((item) => item.fingerprint === descriptor.fingerprint && mappingPriority(item, pageContext) > 0)
+    .sort((left, right) => mappingPriority(right, pageContext) - mappingPriority(left, pageContext))[0];
   const mappedField = mapping ? profile.fields[mapping.profileKey] : undefined;
   const candidates = mappedField ? [createUserCandidate(mappedField.key)] : genericCandidates(descriptor, profile);
   const selected = candidates[0];

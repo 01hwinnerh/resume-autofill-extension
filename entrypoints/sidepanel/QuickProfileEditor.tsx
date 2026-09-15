@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Profile } from '../../src/shared/profile';
 import { PROFILE_FIELDS, buildProfileField } from '../../src/ui/profile-fields';
 import { ProfileValueInput } from '../../src/ui/ProfileValueInput';
-import { QUICK_PROFILE_GROUPS, stringifyFieldValue } from '../../src/ui/profile-management';
+import { QUICK_PROFILE_GROUPS, experienceRecordCount, stringifyFieldValue } from '../../src/ui/profile-management';
 
 export function QuickProfileEditor({ profile, onSave, onOpenFull }: {
   profile: Profile;
@@ -50,6 +50,10 @@ export function QuickProfileEditor({ profile, onSave, onOpenFull }: {
           })}</div>
         </details>
       ))}
+      <div className="experience-summary card" aria-label="多段经历摘要">
+        {(['education', 'work', 'project'] as const).map((section) => { const count = experienceRecordCount(profile, section); const prefix = section === 'education' ? 'educations' : section === 'work' ? 'workExperiences' : 'projects'; const title = section === 'education' ? '教育' : section === 'work' ? '工作' : '项目'; const summaryKey = section === 'education' ? 'school' : section === 'work' ? 'company' : 'name'; return <div key={section}><strong>{title}经历</strong><span>{count} 条{count ? ` · ${stringifyFieldValue(profile.fields[`${prefix}.0.${summaryKey}`]?.value) || '首条待完善'}` : ''}</span></div>; })}
+        <button className="secondary-button" type="button" onClick={onOpenFull}>管理全部经历</button>
+      </div>
       <button className="secondary-button" type="button" onClick={onOpenFull}>打开完整资料中心</button>
       <div className="inline-save"><span role="status">{saving ? '正在保存…' : message || (dirty ? '有未保存修改' : '所有修改已保存')}</span><button type="button" disabled={!dirty || saving} onClick={() => void save()}>{saving ? '保存中…' : '保存资料'}</button></div>
     </section>

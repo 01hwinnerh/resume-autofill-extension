@@ -81,6 +81,15 @@ describe('scanDocument', () => {
     expect(field.elements).toHaveLength(2);
   });
 
+  it('assigns one stable sectionIndex to every field in each repeated container without changing fingerprints', () => {
+    document.body.innerHTML = `
+      <fieldset><legend>教育经历</legend><label>学校<input name="school" /></label><label>专业<input name="major" /></label></fieldset>
+      <fieldset><legend>教育经历</legend><label>学校<input name="school" /></label><label>专业<input name="major" /></label></fieldset>`;
+    const fields = scanDocument(document, context);
+    expect(fields.map((field) => field.sectionIndex)).toEqual([0, 0, 1, 1]);
+    expect(fields[0].fingerprint).toBe(fields[2].fingerprint);
+  });
+
   it('converts runtime fields into serializable descriptors without DOM handles', () => {
     document.body.innerHTML = '<input id="phone" name="phone" value="13800138000" />';
 

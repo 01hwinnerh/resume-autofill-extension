@@ -9,6 +9,8 @@ export const SCORE_WEIGHTS = {
   nameOrIdAlias: 0.15,
   sectionLabel: 0.1,
   typeCompatibility: 0.05,
+  sectionIndexMatch: 0.25,
+  sectionIndexMismatch: -0.35,
 } as const;
 
 export interface ScoredField { score: number; reasons: string[] }
@@ -55,6 +57,17 @@ export function scoreField(
   if (isCompatible(descriptor, profileField)) {
     score += SCORE_WEIGHTS.typeCompatibility;
     reasons.push(`页面控件类型 ${descriptor.kind} 与资料类型 ${profileField.type} 兼容`);
+  }
+  const indexed = profileField.key.match(/^(educations|workExperiences|projects)\.(\d+)\./);
+  if (indexed && descriptor.sectionIndex !== undefined) {
+    const profileIndex = Number(indexed[2]);
+    if (profileIndex === descriptor.sectionIndex) {
+      score += SCORE_WEIGHTS.sectionIndexMatch;
+      reasons.push(`页面第 ${descriptor.sectionIndex + 1} 段与资料第 ${profileIndex + 1} 条一致`);
+    } else {
+      score += SCORE_WEIGHTS.sectionIndexMismatch;
+      reasons.push(`页面段落序号与资料第 ${profileIndex + 1} 条不一致`);
+    }
   }
   return { score: Number(Math.min(1, Math.max(0, score)).toFixed(2)), reasons };
 }

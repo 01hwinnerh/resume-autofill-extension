@@ -35,6 +35,8 @@ export interface PageFieldDescriptor {
   options: Array<{ label: string; value: string }>;
   currentValue: FieldValue;
   sectionLabel?: string;
+  /** Stable 0-based index of a repeated education/work/project container. */
+  sectionIndex?: number;
   framePath: number[];
   fingerprint: string;
 }

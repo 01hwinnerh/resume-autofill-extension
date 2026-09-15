@@ -1,152 +1,82 @@
 import type { PageFieldDescriptor, PageFieldKind } from '../shared/form';
 import type { FieldValue } from '../shared/profile';
-
 import { createFingerprint } from './fingerprint';
 import { resolveLabel, resolveSectionLabel } from './label-resolver';
 import { normalizeLabel } from './normalize-label';
 import type { RuntimePageField, ScanContext } from './runtime-types';
 
-const EXCLUDED_INPUT_TYPES = new Set([
-  'hidden', 'button', 'submit', 'reset', 'image', 'file', 'password', 'color', 'range',
-]);
+const EXCLUDED_INPUT_TYPES = new Set(['hidden', 'button', 'submit', 'reset', 'image', 'file', 'password', 'color', 'range']);
+type RepeatCategory = 'education' | 'work' | 'project';
 
-function optionalAttribute(element: HTMLElement, name: string): string | undefined {
-  return element.getAttribute(name) || undefined;
+function optionalAttribute(element: HTMLElement, name: string): string | undefined { return element.getAttribute(name) || undefined; }
+function isDisabled(element: HTMLElement): boolean { return element.matches(':disabled'); }
+function supportedInput(element: HTMLInputElement): boolean { return !isDisabled(element) && !EXCLUDED_INPUT_TYPES.has(element.type.toLowerCase()); }
+function optionsFor(select: HTMLSelectElement) { return Array.from(select.options).map((option) => ({ label: resolveLabel(option) || normalizeLabel(option.text), value: option.value })); }
+function radioOptions(inputs: HTMLInputElement[]) { return inputs.map((input) => ({ label: resolveLabel(input), value: input.value })); }
+
+function repeatCategory(label: string | undefined): RepeatCategory | undefined {
+  const value = normalizeLabel(label);
+  if (/教育|学历|education|academic/.test(value)) return 'education';
+  if (/工作|实习|职业|work|employment|experience/.test(value)) return 'work';
+  if (/项目|project/.test(value)) return 'project';
+  return undefined;
 }
 
-function isDisabled(element: HTMLElement): boolean {
-  return element.matches(':disabled');
+function sectionContainer(element: HTMLElement): HTMLElement | undefined {
+  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (ancestor.tagName === 'FIELDSET' || ancestor.tagName === 'SECTION' || ancestor.getAttribute('role') === 'group') return ancestor;
+  }
+  return undefined;
 }
 
-function supportedInput(element: HTMLInputElement): boolean {
-  return !isDisabled(element) && !EXCLUDED_INPUT_TYPES.has(element.type.toLowerCase());
+function buildSectionIndexes(controls: Element[]): Map<HTMLElement, number> {
+  const indexes = new Map<HTMLElement, number>();
+  const containers: Record<RepeatCategory, HTMLElement[]> = { education: [], work: [], project: [] };
+  for (const control of controls) {
+    if (!(control instanceof HTMLElement)) continue;
+    const container = sectionContainer(control); const category = repeatCategory(resolveSectionLabel(control));
+    if (container && category && !containers[category].includes(container)) containers[category].push(container);
+  }
+  for (const items of Object.values(containers)) items.forEach((container, index) => indexes.set(container, index));
+  return indexes;
 }
 
-function optionsFor(select: HTMLSelectElement): Array<{ label: string; value: string }> {
-  return Array.from(select.options).map((option) => ({
-    label: resolveLabel(option) || normalizeLabel(option.text),
-    value: option.value,
-  }));
-}
-
-function radioOptions(inputs: HTMLInputElement[]): Array<{ label: string; value: string }> {
-  return inputs.map((input) => ({ label: resolveLabel(input), value: input.value }));
-}
-
-function buildField(
-  element: HTMLElement,
-  elements: HTMLElement[],
-  kind: PageFieldKind,
-  currentValue: FieldValue,
-  options: Array<{ label: string; value: string }>,
-  fieldId: string,
-  context: ScanContext,
-): RuntimePageField {
-  const label = resolveLabel(element);
-  const name = optionalAttribute(element, 'name');
-  const htmlId = element.id || undefined;
-  const sectionLabel = resolveSectionLabel(element);
-
+function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFieldKind, currentValue: FieldValue, options: Array<{ label: string; value: string }>, fieldId: string, context: ScanContext, sectionIndexes: Map<HTMLElement, number>): RuntimePageField {
+  const label = resolveLabel(element); const name = optionalAttribute(element, 'name'); const htmlId = element.id || undefined;
+  const sectionLabel = resolveSectionLabel(element); const container = sectionContainer(element); const sectionIndex = repeatCategory(sectionLabel) && container ? sectionIndexes.get(container) : undefined;
   return {
-    fieldId,
-    kind,
-    inputType: element instanceof HTMLInputElement ? element.type.toLowerCase() : undefined,
-    label,
-    name,
-    htmlId,
-    placeholder: optionalAttribute(element, 'placeholder'),
-    ariaLabel: optionalAttribute(element, 'aria-label'),
-    autocomplete: optionalAttribute(element, 'autocomplete'),
-    options,
-    currentValue,
-    sectionLabel,
+    fieldId, kind, inputType: element instanceof HTMLInputElement ? element.type.toLowerCase() : undefined,
+    label, name, htmlId, placeholder: optionalAttribute(element, 'placeholder'), ariaLabel: optionalAttribute(element, 'aria-label'),
+    autocomplete: optionalAttribute(element, 'autocomplete'), options, currentValue, sectionLabel, sectionIndex,
     framePath: [...context.framePath],
-    fingerprint: createFingerprint({
-      kind,
-      label,
-      name,
-      htmlId,
-      sectionLabel,
-      framePath: context.framePath,
-    }),
+    // sectionIndex deliberately stays out of the fingerprint to preserve old saved mappings.
+    fingerprint: createFingerprint({ kind, label, name, htmlId, sectionLabel, framePath: context.framePath }),
     elements,
   };
 }
 
 export function scanDocument(document: Document, context: ScanContext): RuntimePageField[] {
-  const fields: RuntimePageField[] = [];
-  const groupedRadios = new Set<string>();
-  const controls = Array.from(document.querySelectorAll('input, textarea, select'));
-
+  const fields: RuntimePageField[] = []; const groupedRadios = new Set<string>();
+  const controls = Array.from(document.querySelectorAll('input, textarea, select')); const sectionIndexes = buildSectionIndexes(controls);
   for (const control of controls) {
     if (control instanceof HTMLInputElement) {
       if (!supportedInput(control)) continue;
-
       if (control.type.toLowerCase() === 'radio' && control.name) {
-        if (groupedRadios.has(control.name)) continue;
-        groupedRadios.add(control.name);
-        const group = controls.filter(
-          (candidate): candidate is HTMLInputElement => candidate instanceof HTMLInputElement
-            && candidate.type.toLowerCase() === 'radio'
-            && candidate.name === control.name
-            && supportedInput(candidate),
-        );
+        const container = sectionContainer(control); const groupKey = `${control.name}:${container ? Array.from(document.querySelectorAll('fieldset,section,[role="group"]')).indexOf(container) : -1}`;
+        if (groupedRadios.has(groupKey)) continue; groupedRadios.add(groupKey);
+        const group = controls.filter((candidate): candidate is HTMLInputElement => candidate instanceof HTMLInputElement && candidate.type.toLowerCase() === 'radio' && candidate.name === control.name && sectionContainer(candidate) === container && supportedInput(candidate));
         const checked = group.find((option) => option.checked);
-        fields.push(buildField(
-          control,
-          group,
-          'radio',
-          checked?.value ?? null,
-          radioOptions(group),
-          `field-${fields.length + 1}`,
-          context,
-        ));
-        continue;
+        fields.push(buildField(control, group, 'radio', checked?.value ?? null, radioOptions(group), `field-${fields.length + 1}`, context, sectionIndexes)); continue;
       }
-
       const kind: PageFieldKind = control.type.toLowerCase() === 'checkbox' ? 'checkbox' : 'text';
-      fields.push(buildField(
-        control,
-        [control],
-        kind,
-        kind === 'checkbox' ? control.checked : control.value,
-        [],
-        `field-${fields.length + 1}`,
-        context,
-      ));
-      continue;
+      fields.push(buildField(control, [control], kind, kind === 'checkbox' ? control.checked : control.value, [], `field-${fields.length + 1}`, context, sectionIndexes)); continue;
     }
-
     if (control instanceof HTMLTextAreaElement && !isDisabled(control)) {
-      fields.push(buildField(
-        control,
-        [control],
-        'textarea',
-        control.value,
-        [],
-        `field-${fields.length + 1}`,
-        context,
-      ));
-      continue;
+      fields.push(buildField(control, [control], 'textarea', control.value, [], `field-${fields.length + 1}`, context, sectionIndexes)); continue;
     }
-
-    if (control instanceof HTMLSelectElement && !isDisabled(control)) {
-      fields.push(buildField(
-        control,
-        [control],
-        'select',
-        control.value,
-        optionsFor(control),
-        `field-${fields.length + 1}`,
-        context,
-      ));
-    }
+    if (control instanceof HTMLSelectElement && !isDisabled(control)) fields.push(buildField(control, [control], 'select', control.value, optionsFor(control), `field-${fields.length + 1}`, context, sectionIndexes));
   }
-
   return fields;
 }
 
-export function toDescriptor(field: RuntimePageField): PageFieldDescriptor {
-  const { elements: _elements, ...descriptor } = field;
-  return descriptor;
-}
+export function toDescriptor(field: RuntimePageField): PageFieldDescriptor { const { elements: _elements, ...descriptor } = field; return descriptor; }

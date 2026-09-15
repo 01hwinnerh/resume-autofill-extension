@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { ProfileStore } from '../../src/profile/profile-store';
 import type { FillSummary } from '../../src/runtime/application-controller';
-import type { UserFieldMapping } from '../../src/shared/mapping';
+import { createMappingId, normalizeMappingScope, type MappingScope, type UserFieldMapping } from '../../src/shared/mapping';
 import type { ConfirmedFill, RuntimeCommandResponse } from '../../src/shared/messages';
 import type { FillPolicy, Profile, ProfileField } from '../../src/shared/profile';
 import { LocalStorage } from '../../src/storage/local-storage';
@@ -45,7 +45,7 @@ export default function App() {
 
   async function saveProfile(next: Profile) { await profileStore.save(next); setProfile(next); }
 
-  async function saveMapping(input: { fieldId: string; profileKey: string; customValue: string; policy: FillPolicy; label?: string }) {
+  async function saveMapping(input: { fieldId: string; profileKey: string; customValue: string; policy: FillPolicy; label?: string; scopeKind: MappingScope['kind'] }) {
     if (state.kind !== 'review') throw new Error('请先扫描页面');
     const field = state.result.fields.find((match) => match.descriptor.fieldId === input.fieldId);
     if (!field) throw new Error('页面字段不存在');
@@ -55,7 +55,8 @@ export default function App() {
       await saveProfile(nextProfile);
     }
     const pageUrl = new URL(state.result.page.url);
-    await mappingStore.upsert({ id: `${state.result.page.host}:${field.descriptor.fingerprint}:${input.profileKey}`, scope: { host: state.result.page.host, path: pageUrl.pathname }, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, createdAt: new Date().toISOString() });
+    const scope: MappingScope = input.scopeKind === 'global' ? { kind: 'global' } : input.scopeKind === 'host' ? { kind: 'host', host: state.result.page.host } : { kind: 'path', host: state.result.page.host, path: pageUrl.pathname };
+    await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, input.profileKey, scope), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, createdAt: new Date().toISOString() });
     setMappings(await mappingStore.list());
   }
 
@@ -70,6 +71,21 @@ export default function App() {
     const next = { ...profile, fields: { ...profile.fields } }; delete next.fields[key];
     await Promise.all([profileStore.save(next), mappingStore.deleteByProfileKey(key)]); setProfile(next); setMappings(await mappingStore.list());
   }
+
+  async function updateMappingScope(mapping: UserFieldMapping, kind: MappingScope['kind']) {
+    const existing = normalizeMappingScope(mapping.scope);
+    const currentUrl = state.kind === 'review' ? new URL(state.result.page.url) : undefined;
+    const host = existing.kind === 'global' ? currentUrl?.host : existing.host;
+    const path = existing.kind === 'path' ? existing.path : currentUrl?.pathname;
+    if (kind !== 'global' && !host) throw new Error('请先扫描目标网站，再改为网站或页面作用域');
+    if (kind === 'path' && !path) throw new Error('请先扫描目标页面，再改为页面作用域');
+    const scope: MappingScope = kind === 'global' ? { kind } : kind === 'host' ? { kind, host: host! } : { kind, host: host!, path: path! };
+    await mappingStore.delete(mapping.id);
+    await mappingStore.upsert({ ...mapping, id: createMappingId(mapping.fingerprint, mapping.profileKey, scope), scope });
+    setMappings(await mappingStore.list());
+  }
+
+  async function deleteMapping(id: string) { await mappingStore.delete(id); setMappings(await mappingStore.list()); }
 
   async function locate(fieldId: string) {
     const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId }) as RuntimeCommandResponse;
@@ -93,7 +109,7 @@ export default function App() {
     <nav className="primary-nav" aria-label="主要导航"><button className={view === 'assistant' ? 'active' : ''} onClick={() => setView('assistant')}>填写助手</button><button className={view === 'profile' ? 'active' : ''} onClick={() => setView('profile')}>我的资料</button><button className={view === 'custom' ? 'active' : ''} onClick={() => setView('custom')}>自定义字段</button></nav>
     {notice && <p className="notice" role="alert">{notice}</p>}
     {view === 'profile' && <QuickProfileEditor profile={profile} onSave={saveProfile} onOpenFull={() => void browser.runtime.openOptionsPage()} />}
-    {view === 'custom' && <CustomFieldsManager profile={profile} mappings={mappings} onSave={saveCustomField} onDelete={deleteCustomField} />}
+    {view === 'custom' && <CustomFieldsManager profile={profile} mappings={mappings} onSave={saveCustomField} onDelete={deleteCustomField} onUpdateMapping={updateMappingScope} onDeleteMapping={deleteMapping} />}
     {view === 'assistant' && <>
       {state.kind === 'idle' && <section className="assistant-empty card"><div className="completion-ring" aria-label={`资料完成度 ${completion.percent}%`}>{completion.percent}%</div><div><h2>{completion.filled ? '继续完善资料并扫描页面' : '先完善基础资料'}</h2><p>{completion.filled ? `已填写 ${completion.filled}/${completion.total} 项资料` : '填写姓名、手机和邮箱后，匹配会更准确。'}</p></div><div className="completion-groups"><span>基本信息 {completion.bySection.basic.filled}/{completion.bySection.basic.total}</span><span>教育 {completion.bySection.education.filled}/{completion.bySection.education.total}</span><span>工作 {completion.bySection.work.filled}/{completion.bySection.work.total}</span></div>{!completion.filled && <button className="secondary-button" type="button" onClick={() => setView('profile')}>完善基础资料</button>}</section>}
       <section className="scan-card card"><div><strong>{state.kind === 'review' ? state.result.page.title || state.result.page.host : '扫描当前招聘页面'}</strong><span>{state.kind === 'review' ? state.result.page.host : '识别字段并生成安全填写建议'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : state.kind === 'review' ? '重新扫描' : '扫描当前页面'}</button></section>

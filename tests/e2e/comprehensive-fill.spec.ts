@@ -74,3 +74,26 @@ test('intercepts an explicit manual submit with visible feedback', async ({ page
   expect(await page.evaluate(() => (globalThis as { __submitted?: boolean }).__submitted)).toBe(true);
   await expect(page.locator('#submit-status')).toHaveText('测试提交已拦截');
 });
+
+
+test('fills second profile records into second existing containers without adding or submitting', async ({ page }) => {
+  await page.goto('/comprehensive-form.html');
+  const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-repeated' });
+  const descriptors = scan.result.descriptors;
+  const second = (label: string, section: string) => {
+    const descriptor = descriptors.find((candidate) => candidate.label === label && candidate.sectionLabel === section && candidate.sectionIndex === 1);
+    expect(descriptor, `missing second ${section}/${label}`).toBeDefined(); return descriptor!;
+  };
+  const response = await runRuntimeMessage(page, { type: 'fill-fields', requestId: 'fill-repeated', fields: [
+    { fieldId: second('毕业院校', '教育经历').fieldId, profileKey: 'educations.1.school', value: '第二测试大学' },
+    { fieldId: second('公司名称', '工作经历').fieldId, profileKey: 'workExperiences.1.company', value: '第二测试公司' },
+    { fieldId: second('项目名称', '项目经历').fieldId, profileKey: 'projects.1.name', value: '第二测试项目' },
+  ] });
+  expect(response.results.every((result) => result.outcome.status === 'filled' && result.verification?.verified)).toBe(true);
+  await expect(page.locator('#edu2-school')).toHaveValue('第二测试大学');
+  await expect(page.locator('#work2-company')).toHaveValue('第二测试公司');
+  await expect(page.locator('#project2-name')).toHaveValue('第二测试项目');
+  expect(await page.evaluate(() => (globalThis as { __addExperienceClicks?: number }).__addExperienceClicks)).toBe(0);
+  expect(await page.evaluate(() => (globalThis as { __submitted?: boolean }).__submitted)).toBe(false);
+  await expect(page.locator('#submit-status')).toHaveText('尚未提交');
+});

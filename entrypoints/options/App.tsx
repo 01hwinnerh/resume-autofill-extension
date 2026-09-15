@@ -5,6 +5,7 @@ import {
   P0_PROFILE_FIELDS,
   buildProfileField,
   emptyProfile,
+  isCustomProfileKey,
 } from '../../src/ui/profile-fields';
 
 const profileStore = new ProfileStore(new LocalStorage());
@@ -26,6 +27,10 @@ export default function App() {
   }, []);
 
   async function save() {
+    if (customKey.trim() && !isCustomProfileKey(customKey)) {
+      setMessage('自定义字段 key 必须以 custom. 开头');
+      return;
+    }
     const profile = emptyProfile();
     for (const definition of P0_PROFILE_FIELDS) {
       const value = values[definition.key]?.trim();

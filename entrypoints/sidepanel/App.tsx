@@ -6,7 +6,7 @@ import { MappingStore } from '../../src/storage/mapping-store';
 import type { FillSummary } from '../../src/runtime/application-controller';
 import type { RuntimeCommandResponse } from '../../src/shared/messages';
 import type { FillPolicy, Profile } from '../../src/shared/profile';
-import { emptyProfile } from '../../src/ui/profile-fields';
+import { emptyProfile, isCustomProfileKey } from '../../src/ui/profile-fields';
 import { reducePanel } from '../../src/ui/panel-state';
 import { FieldMatchView } from '../../src/ui/field-match-view';
 import { StatusSummary } from '../../src/ui/status-summary';
@@ -50,6 +50,10 @@ export default function App() {
     const profileKey = mappingCustomKey.trim() || mappingProfileKey;
     if (!field || !profileKey) {
       setError('请选择待映射字段和目标资料字段');
+      return;
+    }
+    if (mappingCustomKey.trim() && !isCustomProfileKey(mappingCustomKey)) {
+      setError('自定义字段 key 必须以 custom. 开头');
       return;
     }
 

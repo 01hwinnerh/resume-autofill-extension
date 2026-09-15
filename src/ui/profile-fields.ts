@@ -23,6 +23,10 @@ export function emptyProfile(): Profile {
   return { schemaVersion: 1, fields: {} };
 }
 
+export function isCustomProfileKey(key: string): boolean {
+  return /^custom\.[A-Za-z0-9][A-Za-z0-9._-]*$/.test(key.trim());
+}
+
 export function profileFieldValue(profile: Profile, key: string): ProfileField['value'] {
   return profile.fields[key]?.value ?? null;
 }

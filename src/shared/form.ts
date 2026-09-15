@@ -38,6 +38,8 @@ export interface PageFieldDescriptor {
   sectionLabel?: string;
   /** Stable 0-based index of a repeated education/work/project container. */
   sectionIndex?: number;
+  /** Controls that are discoverable but require a site-specific interaction instead of value assignment. */
+  manualOnly?: boolean;
   /** Non-sensitive evidence describing where site-specific semantics came from. */
   semanticSource?: string;
   framePath: number[];

@@ -11,7 +11,7 @@ const COMPONENT_LABEL_SELECTORS = [
 ];
 
 function isComponentFieldContainer(element: HTMLElement): boolean {
-  if (element.matches('.semi-form-field, [data-field-name]')) return true;
+  if (element.matches('.semi-form-field, [data-field-name], [data-form-field-id], [data-form-field-name]')) return true;
   const tokens = element.className.toString().split(/\s+/).filter(Boolean);
   return tokens.some((token) => {
     const value = token.toLowerCase();
@@ -99,9 +99,24 @@ function componentSectionHeading(container: HTMLElement): string | undefined {
   return undefined;
 }
 
+function formilyLabel(element: HTMLElement): string | undefined {
+  const container = element.closest<HTMLElement>('[data-form-field-i18n-name]');
+  if (!container) return undefined;
+  const label = cleanLabel(container.getAttribute('data-form-field-i18n-name'));
+  if (!label) return undefined;
+  if (container.getAttribute('data-form-field-name') !== 'start_end_time') return label;
+  const controls = Array.from(container.querySelectorAll<HTMLElement>('input, textarea, select'));
+  const index = controls.indexOf(element);
+  if (index === 0) return '开始时间';
+  if (index === 1) return '结束时间';
+  return label;
+}
+
 export function resolveLabel(element: HTMLElement): string {
   const schema = cleanLabel(element.getAttribute('data-resume-autofill-schema-label'));
   if (schema) return schema;
+  const formily = formilyLabel(element);
+  if (formily) return formily;
   const associated = labelFor(element);
   if (associated) return associated;
   const wrapping = cleanLabel(element.closest('label')?.textContent);
@@ -123,10 +138,19 @@ export function resolveLabel(element: HTMLElement): string {
   return cleanLabel(element.id) ?? '';
 }
 
+const FORMILY_SECTION_LABELS: Record<string, string> = {
+  education_list: '教育经历',
+  career_list: '工作经历',
+  internship_list: '实习经历',
+  project_list: '项目经历',
+};
+
 export function resolveSectionLabel(element: HTMLElement): string | undefined {
   const schema = cleanLabel(element.getAttribute('data-resume-autofill-schema-section'));
   if (schema) return schema;
   for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    const formilySection = FORMILY_SECTION_LABELS[ancestor.id.replace(/^formily-item-/, '')];
+    if (formilySection) return formilySection;
     if (ancestor.tagName === 'FIELDSET') {
       const legend = directLegend(ancestor);
       if (legend) return legend;

@@ -29,6 +29,9 @@ function resolveField(
   profile: Profile,
   options: ResolveMatchOptions,
 ): FieldMatch {
+  if (field.manualOnly) {
+    return { descriptor: field, candidates: [], status: 'unsupported' };
+  }
   const [mappedMatch] = matchFields([field], profile, options);
   const [genericMatch] = matchFields([field], profile, {
     mappings: [],

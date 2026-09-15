@@ -31,6 +31,15 @@ function observeEvents(element: HTMLElement, eventTypes: Array<'input' | 'change
 }
 
 describe('fillField', () => {
+  it('refuses controls that require a site-specific manual interaction', async () => {
+    const field = fieldFor('<input type="search" role="combobox">', 'text');
+    field.manualOnly = true;
+
+    await expect(fillField(field, '本科', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'failed', fieldId: 'field-1', reason: 'control requires manual interaction' });
+    expect((field.elements[0] as HTMLInputElement).value).toBe('');
+  });
+
   it.each([
     ['text input', '<input>', 'text'],
     ['textarea', '<textarea></textarea>', 'textarea'],

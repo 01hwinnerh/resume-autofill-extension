@@ -117,6 +117,7 @@ export async function fillField(
   options: FillOptions,
 ): Promise<FillOutcome> {
   if (!options.confirmed) return failed(field.fieldId, 'fill requires explicit confirmation');
+  if (field.manualOnly) return failed(field.fieldId, 'control requires manual interaction');
   if (!options.overwrite && hasExistingValue(field)) {
     return { status: 'skipped_existing', fieldId: field.fieldId };
   }

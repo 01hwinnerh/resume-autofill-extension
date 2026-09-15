@@ -24,7 +24,8 @@ function repeatCategory(label: string | undefined): RepeatCategory | undefined {
 
 function sectionContainer(element: HTMLElement): HTMLElement | undefined {
   for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
-    if (ancestor.tagName === 'FIELDSET' || ancestor.tagName === 'SECTION' || ancestor.getAttribute('role') === 'group') return ancestor;
+    const isFormilyArrayCard = Array.from(ancestor.classList).some((token) => token.startsWith('apply-form-array-card__'));
+    if (isFormilyArrayCard || ancestor.tagName === 'FIELDSET' || ancestor.tagName === 'SECTION' || ancestor.getAttribute('role') === 'group') return ancestor;
   }
   return undefined;
 }
@@ -41,8 +42,22 @@ function buildSectionIndexes(controls: Element[]): Map<HTMLElement, number> {
   return indexes;
 }
 
+function formilyContainer(element: HTMLElement): HTMLElement | undefined {
+  return element.closest<HTMLElement>('[data-form-field-id], [data-form-field-name]') ?? undefined;
+}
+
+function isManualOnlyControl(element: HTMLElement): boolean {
+  return element instanceof HTMLInputElement
+    && element.type.toLowerCase() === 'search'
+    && element.getAttribute('role') === 'combobox'
+    && formilyContainer(element) !== undefined;
+}
+
 function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFieldKind, currentValue: FieldValue, options: Array<{ label: string; value: string }>, fieldId: string, context: ScanContext, sectionIndexes: Map<HTMLElement, number>): RuntimePageField {
-  const label = resolveLabel(element); const name = optionalAttribute(element, 'name'); const htmlId = element.id || undefined;
+  const formily = formilyContainer(element);
+  const label = resolveLabel(element);
+  const name = optionalAttribute(element, 'name') ?? optionalAttribute(formily ?? element, 'data-form-field-name');
+  const htmlId = element.id || formily?.id || undefined;
   const sectionLabel = resolveSectionLabel(element); const container = sectionContainer(element);
   const annotatedIndex = Number.parseInt(element.getAttribute('data-resume-autofill-section-index') ?? '', 10);
   const sectionIndex = Number.isFinite(annotatedIndex)
@@ -52,7 +67,8 @@ function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFie
     fieldId, kind, inputType: element instanceof HTMLInputElement ? element.type.toLowerCase() : undefined,
     label, name, htmlId, placeholder: optionalAttribute(element, 'placeholder'), ariaLabel: optionalAttribute(element, 'aria-label'),
     autocomplete: optionalAttribute(element, 'autocomplete'), options, currentValue, sectionLabel, sectionIndex,
-    semanticSource: optionalAttribute(element, 'data-resume-autofill-semantic-source'),
+    manualOnly: isManualOnlyControl(element),
+    semanticSource: optionalAttribute(element, 'data-resume-autofill-semantic-source') ?? (formily ? 'formily-dom' : undefined),
     framePath: [...context.framePath],
     // sectionIndex deliberately stays out of the fingerprint to preserve old saved mappings.
     fingerprint: createFingerprint({ kind, label, name, htmlId, sectionLabel, framePath: context.framePath }),

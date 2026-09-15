@@ -20,14 +20,20 @@ describe('ByteDanceJobsAdapter', () => {
   it('maps basic and indexed education labels to profile keys', () => {
     const hints = adapter.discoverHints([
       field({ fieldId: 'email', label: '电子邮箱' }),
-      field({ fieldId: 'school', label: '毕业院校', sectionLabel: '教育经历', sectionIndex: 1 }),
+      field({ fieldId: 'school', label: '学校名称', sectionLabel: '教育经历', sectionIndex: 1 }),
       field({ fieldId: 'degree', label: '学历', sectionIndex: 0 }),
+      field({ fieldId: 'education-start', label: '开始时间', sectionLabel: '教育经历', sectionIndex: 1 }),
+      field({ fieldId: 'company', label: '公司名称', sectionLabel: '工作经历', sectionIndex: 0 }),
+      field({ fieldId: 'project', label: '项目名称', sectionLabel: '项目经历', sectionIndex: 0 }),
     ]);
 
     expect(hints).toEqual([
       expect.objectContaining({ fieldId: 'email', profileKey: 'contact.email', score: 0.96 }),
       expect.objectContaining({ fieldId: 'school', profileKey: 'educations.1.school', score: 0.96 }),
       expect.objectContaining({ fieldId: 'degree', profileKey: 'educations.0.degree', score: 0.96 }),
+      expect.objectContaining({ fieldId: 'education-start', profileKey: 'educations.1.startDate', score: 0.96 }),
+      expect.objectContaining({ fieldId: 'company', profileKey: 'workExperiences.0.company', score: 0.96 }),
+      expect.objectContaining({ fieldId: 'project', profileKey: 'projects.0.name', score: 0.96 }),
     ]);
   });
 

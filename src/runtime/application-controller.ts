@@ -33,7 +33,7 @@ export interface BrowserPort {
     sendMessage(tabId: number, message: PageMessage): Promise<PageResponse>;
   };
   scripting: {
-    executeScript(details: { target: { tabId: number }; files: string[]; world?: 'ISOLATED' | 'MAIN' }): Promise<unknown>;
+    executeScript(details: { target: { tabId: number }; files: string[] }): Promise<unknown>;
   };
 }
 
@@ -140,19 +140,6 @@ export function createApplicationController(
     return tab;
   }
 
-  async function preparePageSemantics(tabId: number, context: PageContext): Promise<void> {
-    if (context.host !== 'jobs.bytedance.com' || !/\/resume\/[^/]+\/apply(?:\/|$)/.test(new URL(context.url).pathname)) return;
-    try {
-      await dependencies.browser.scripting.executeScript({
-        target: { tabId },
-        files: ['bytedance-page-runtime.js'],
-        world: 'MAIN',
-      });
-    } catch {
-      // Site-specific enrichment is best-effort; the generic DOM scanner remains available.
-    }
-  }
-
   async function injectRuntime(tabId: number): Promise<void> {
     try {
       await withTimeout(
@@ -202,7 +189,6 @@ export function createApplicationController(
       dependencies.mappingStore.list(),
     ]);
 
-    await preparePageSemantics(tab.id!, context);
     await injectRuntime(tab.id!);
     const response = await sendPageMessage(tab.id!, {
       type: 'scan-page',

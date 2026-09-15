@@ -90,6 +90,60 @@ describe('scanDocument', () => {
     expect(fields[0].fingerprint).toBe(fields[2].fingerprint);
   });
 
+  it('reads Formily field metadata, repeated cards, and date-range endpoints', () => {
+    document.body.innerHTML = `
+      <div id="formily-item-education_list">
+        <div class="apply-form-array-card__fixture">
+          <div data-form-field-id="school" data-form-field-name="school" data-form-field-i18n-name="学校名称" id="formily-item-school">
+            <div class="ud-formily-item-control"><input class="ud__native-input" value="学校 A" /></div>
+          </div>
+          <div data-form-field-id="start_end_time" data-form-field-name="start_end_time" data-form-field-i18n-name="起止时间" id="formily-item-start_end_time">
+            <input class="ud__native-input" value="2020-09" />
+            <input class="ud__native-input" value="2024-06" />
+          </div>
+          <div data-form-field-id="degree" data-form-field-name="degree" data-form-field-i18n-name="学历" id="formily-item-degree">
+            <input type="search" role="combobox" class="ud__select__selector__search__input ud__native-input" />
+          </div>
+        </div>
+        <div class="apply-form-array-card__fixture">
+          <div data-form-field-id="school" data-form-field-name="school" data-form-field-i18n-name="学校名称" id="formily-item-school">
+            <input class="ud__native-input" value="学校 B" />
+          </div>
+        </div>
+      </div>`;
+
+    const fields = scanDocument(document, context);
+
+    expect(fields.map((field) => ({
+      label: field.label,
+      name: field.name,
+      sectionLabel: field.sectionLabel,
+      sectionIndex: field.sectionIndex,
+      manualOnly: field.manualOnly,
+      semanticSource: field.semanticSource,
+    }))).toEqual([
+      { label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: false, semanticSource: 'formily-dom' },
+      { label: '开始时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: false, semanticSource: 'formily-dom' },
+      { label: '结束时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: false, semanticSource: 'formily-dom' },
+      { label: '学历', name: 'degree', sectionLabel: '教育经历', sectionIndex: 0, manualOnly: true, semanticSource: 'formily-dom' },
+      { label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 1, manualOnly: false, semanticSource: 'formily-dom' },
+    ]);
+    expect(fields[0].htmlId).toBe('formily-item-school');
+    expect(fields[1].fingerprint).not.toBe(fields[2].fingerprint);
+  });
+
+  it('resolves Formily work and project module labels', () => {
+    document.body.innerHTML = `
+      <div id="formily-item-career_list"><div class="apply-form-array-card__work"><div data-form-field-name="company" data-form-field-i18n-name="公司名称"><input /></div></div></div>
+      <div id="formily-item-project_list"><div class="apply-form-array-card__project"><div data-form-field-name="name" data-form-field-i18n-name="项目名称"><input /></div></div></div>`;
+
+    const fields = scanDocument(document, context);
+    expect(fields.map((field) => [field.label, field.sectionLabel, field.sectionIndex])).toEqual([
+      ['公司名称', '工作经历', 0],
+      ['项目名称', '项目经历', 0],
+    ]);
+  });
+
   it('converts runtime fields into serializable descriptors without DOM handles', () => {
     document.body.innerHTML = '<input id="phone" name="phone" value="13800138000" />';
 

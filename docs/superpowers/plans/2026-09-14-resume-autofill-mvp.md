@@ -1104,7 +1104,7 @@ git commit -m "test(resume-autofill): cover local form filling flow"
 **Interfaces:**
 - Produces a reproducible local workflow for a future developer and a checklist that distinguishes unit, browser, and manual evidence.
 
-- [ ] **Step 1: Document installation and commands.**
+- [x] **Step 1: Document installation and commands.**
 
 `README.md` must explain:
 
@@ -1119,7 +1119,7 @@ pnpm build
 
 It must explain how to load the generated Chrome MV3 build as an unpacked extension and how to open the options page and side panel. It must state that the extension does not submit applications, bypass verification, or upload files automatically.
 
-- [ ] **Step 2: Write the verification checklist.**
+- [x] **Step 2: Write the verification checklist.**
 
 The checklist must include:
 
@@ -1136,7 +1136,7 @@ The checklist must include:
 - no submit action exists;
 - no real personal values or secrets are present in source, fixtures, logs, or test artifacts.
 
-- [ ] **Step 3: Run the full verification set.**
+- [x] **Step 3: Run the full verification set.**
 
 ```bash
 pnpm typecheck
@@ -1146,7 +1146,7 @@ pnpm build
 git diff --check
 ```
 
-- [ ] **Step 4: Inspect the final repository state.**
+- [x] **Step 4: Inspect the final repository state.**
 
 Run:
 
@@ -1156,15 +1156,17 @@ git log --oneline --decorate -12
 rg -n -i 'api[_-]?key|token|password|secret|fixme' --glob '!pnpm-lock.yaml' --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**' .
 ```
 
-Expected: no credential-like values and no unfinished implementation markers in source; generated artifacts and environment `.DS_Store` files remain untracked or ignored, never committed.
+Expected: no credential-like values and no unfinished implementation markers in source; generated artifacts and environment `.DS_Store` files remain untracked or ignored, never committed. Verified: the only sensitive-word matches are intentional control names used by scanner tests (`type="password"`, `name="secret"`); no credential values or unfinished markers were found.
 
-- [ ] **Step 5: Commit the verification documentation.**
+- [x] **Step 5: Commit the verification documentation.**
 
 ```bash
 git add README.md docs/verification/mvp-checklist.md
 git diff --cached --check
 git commit -m "docs(resume-autofill): document MVP verification"
 ```
+
+Task 11 verification documentation was committed as `1078eb9`.
 
 ## Implementation References
 

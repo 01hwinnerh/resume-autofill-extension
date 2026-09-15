@@ -42,6 +42,9 @@ export default function App() {
     return needle ? records.filter((item) => `${item.company} ${item.role} ${item.currentStageLabel}`.toLocaleLowerCase().includes(needle)) : records;
   }, [records, query]);
   const selected = records.find((item) => item.id === selectedId);
+  const timelineEvents = useMemo(() => selected
+    ? [...selected.events].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
+    : [], [selected]);
 
   async function createRecord() {
     setMessage('');
@@ -100,8 +103,9 @@ export default function App() {
       <section className="record-detail card">
         {!selected ? <div className="empty"><strong>选择一条记录查看详情</strong></div> : <>
           <header className="detail-header"><div><span className="stage-badge">{selected.currentStageLabel}</span><h2>{selected.company}</h2><p>{selected.role}</p></div><div>{selected.url && <a href={selected.url} target="_blank" rel="noreferrer">打开职位页面</a>}<button className="danger" onClick={() => void removeRecord(selected)}>删除</button></div></header>
-          <section className="stage-editor"><h3>更新进度</h3><div className="stage-grid"><label>阶段<select value={stage} onChange={(event) => setStage(event.target.value as ApplicationStageId)}>{APPLICATION_STAGE_PRESETS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}<option value="custom">自定义阶段</option></select></label>{stage === 'custom' && <label>阶段名称<input value={customStage} onChange={(event) => setCustomStage(event.target.value)} placeholder="例如：HR 面" /></label>}<label>发生时间<input type="datetime-local" value={stageTime} onChange={(event) => setStageTime(event.target.value)} /></label><label className="wide">备注<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="可选：记录面试安排、反馈或下一步" /></label></div><button className="primary" onClick={() => void addStage()}>添加到时间线</button></section>
-          <section className="timeline"><h3>进度时间线</h3>{[...selected.events].reverse().map((event, index) => <article key={event.id}><i className={index === 0 ? 'current' : ''} /><div><header><strong>{event.label}</strong><time>{displayTime(event.occurredAt)}</time></header>{event.note && <p>{event.note}</p>}</div></article>)}</section>
+          <section className="stage-editor"><div className="section-heading"><div><h3>更新进度</h3><p>每次更新都会追加为独立节点，不会覆盖以前的阶段。</p></div><span>{timelineEvents.length} 个节点</span></div><div className="stage-grid"><label>阶段<select value={stage} onChange={(event) => setStage(event.target.value as ApplicationStageId)}>{APPLICATION_STAGE_PRESETS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}<option value="custom">自定义阶段</option></select></label>{stage === 'custom' && <label>阶段名称<input value={customStage} onChange={(event) => setCustomStage(event.target.value)} placeholder="例如：HR 面" /></label>}<label>发生时间<input type="datetime-local" value={stageTime} onChange={(event) => setStageTime(event.target.value)} /></label><label className="wide">备注<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="可选：记录面试安排、反馈或下一步" /></label></div><button className="primary" onClick={() => void addStage()}>追加到时间线</button></section>
+          <section className="timeline-overview" aria-label="阶段进度线"><div className="timeline-track">{timelineEvents.map((event, index) => <div className={`timeline-node ${index === timelineEvents.length - 1 ? 'current' : ''}`} key={event.id}><i /><strong>{event.label}</strong><time>{displayTime(event.occurredAt)}</time></div>)}</div></section>
+          <section className="timeline"><h3>完整时间线</h3>{[...timelineEvents].reverse().map((event, index) => <article key={event.id}><i className={index === 0 ? 'current' : ''} /><div><header><strong>{event.label}</strong><time>{displayTime(event.occurredAt)}</time></header>{event.note && <p>{event.note}</p>}</div></article>)}</section>
         </>}
       </section>
     </section>

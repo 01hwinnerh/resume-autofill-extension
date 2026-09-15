@@ -82,12 +82,15 @@ export class ApplicationStore {
       if (record.id !== recordId) return record;
       const occurredAt = input.occurredAt ?? new Date().toISOString();
       const label = applicationStageLabel(input.stage, input.label);
+      const event = { id: createId('event'), stage: input.stage, label, occurredAt, note: input.note?.trim() || undefined };
+      const events = [...record.events, event];
+      const latest = events.reduce((current, candidate) => candidate.occurredAt >= current.occurredAt ? candidate : current);
       updated = {
         ...record,
-        currentStage: input.stage,
-        currentStageLabel: label,
-        updatedAt: occurredAt,
-        events: [...record.events, { id: createId('event'), stage: input.stage, label, occurredAt, note: input.note?.trim() || undefined }],
+        currentStage: latest.stage,
+        currentStageLabel: latest.label,
+        updatedAt: occurredAt > record.updatedAt ? occurredAt : record.updatedAt,
+        events,
       };
       return updated;
     }));

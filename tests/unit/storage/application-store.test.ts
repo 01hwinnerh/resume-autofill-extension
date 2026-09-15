@@ -26,6 +26,18 @@ describe('ApplicationStore', () => {
     expect(updated.events[1]?.note).toBe('视频面试');
   });
 
+  it('keeps all timeline events and derives current stage from the latest timestamp', async () => {
+    const store = new ApplicationStore(new MemoryStorage());
+    const record = await store.create({ company: '示例公司', role: '前端工程师', url: '', sourceHost: '', appliedAt: '2026-09-15T10:00:00.000Z' });
+    await store.addEvent(record.id, { stage: 'interview_2', occurredAt: '2026-09-20T10:00:00.000Z' });
+    const updated = await store.addEvent(record.id, { stage: 'written_test', occurredAt: '2026-09-17T10:00:00.000Z' });
+
+    expect(updated.currentStage).toBe('interview_2');
+    expect(updated.currentStageLabel).toBe('二面');
+    expect(updated.events.map((event) => event.label)).toEqual(['已投递', '二面', '笔试']);
+    expect(updated.events).toHaveLength(3);
+  });
+
   it('serializes concurrent record creation and supports deletion', async () => {
     const store = new ApplicationStore(new MemoryStorage());
     const [first] = await Promise.all([

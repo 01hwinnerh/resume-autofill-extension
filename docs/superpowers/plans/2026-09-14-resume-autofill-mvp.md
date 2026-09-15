@@ -1035,6 +1035,7 @@ git commit -m "feat(resume-autofill): add review-first extension UI"
 - Create: `tests/fixtures/fixture-server.ts`
 - Modify: `package.json`
 - Modify: `playwright.config.ts`
+- Modify: `wxt.config.ts`
 - Create: `tests/e2e/support/extension.ts`
 - Create: `tests/e2e/generic-fill.spec.ts`
 - Create: `tests/e2e/safety-boundary.spec.ts`

@@ -45,6 +45,7 @@ export interface ControllerDependencies {
 export interface ApplicationController {
   scanActiveTab(): Promise<ScanResult>;
   fillConfirmed(fields: ConfirmedFill[]): Promise<FillSummary>;
+  focusField(fieldId: string): Promise<{ fieldId: string; focused: boolean }>;
 }
 
 export interface FillSummary {
@@ -232,16 +233,33 @@ export function createApplicationController(
     return summary;
   }
 
-  return { scanActiveTab, fillConfirmed };
+  async function focusField(fieldId: string): Promise<{ fieldId: string; focused: boolean }> {
+    const tab = await activeTab();
+    await injectRuntime(tab.id!);
+    const response = await sendPageMessage(tab.id!, {
+      type: 'focus-field',
+      requestId: nextRequestId('focus'),
+      fieldId,
+    }, false);
+    if (response.type !== 'focus-result') {
+      throw new RuntimeRequestError(createRuntimeError('FIELD_OPERATION_FAILED', 'The page field could not be located.', true));
+    }
+    return { fieldId: response.fieldId, focused: response.focused };
+  }
+
+  return { scanActiveTab, fillConfirmed, focusField };
 }
 
 export function handleRuntimeCommand(
   controller: ApplicationController,
   command: import('../shared/messages').RuntimeCommand,
 ): Promise<RuntimeCommandResponse> {
-  return (command.type === 'scan-active-tab'
+  const operation = command.type === 'scan-active-tab'
     ? controller.scanActiveTab()
-    : controller.fillConfirmed(command.fields))
+    : command.type === 'fill-confirmed-fields'
+      ? controller.fillConfirmed(command.fields)
+      : controller.focusField(command.fieldId);
+  return operation
     .then((data) => ({ ok: true as const, data }))
     .catch((error: unknown) => {
       if (error instanceof RuntimeRequestError) return { ok: false as const, error: error.runtimeError };

@@ -50,6 +50,7 @@ function buildField(
   return {
     fieldId,
     kind,
+    inputType: element instanceof HTMLInputElement ? element.type.toLowerCase() : undefined,
     label,
     name,
     htmlId,

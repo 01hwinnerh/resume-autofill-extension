@@ -46,12 +46,25 @@ export class MappingStore {
   }
 
   async upsert(mapping: UserFieldMapping): Promise<void> {
-    const operation = this.writeQueue.then(async () => {
-      const mappings = await this.list();
+    return this.update((mappings) => {
       const index = mappings.findIndex((candidate) => candidate.id === mapping.id);
       if (index === -1) mappings.push(mapping);
       else mappings[index] = mapping;
+      return mappings;
+    });
+  }
 
+  async delete(id: string): Promise<void> {
+    return this.update((mappings) => mappings.filter((mapping) => mapping.id !== id));
+  }
+
+  async deleteByProfileKey(profileKey: string): Promise<void> {
+    return this.update((mappings) => mappings.filter((mapping) => mapping.profileKey !== profileKey));
+  }
+
+  private update(transform: (mappings: UserFieldMapping[]) => UserFieldMapping[]): Promise<void> {
+    const operation = this.writeQueue.then(async () => {
+      const mappings = transform(await this.list());
       try {
         await this.storage.set<MappingEnvelope>(MAPPINGS_KEY, {
           schemaVersion: MAPPINGS_SCHEMA_VERSION,

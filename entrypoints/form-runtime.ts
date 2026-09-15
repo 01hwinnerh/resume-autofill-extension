@@ -1,6 +1,7 @@
 import { defineUnlistedScript } from 'wxt/utils/define-unlisted-script';
 import { fillField } from '../src/filling/control-filler';
 import { verifyField } from '../src/filling/verify-field';
+import { highlightField } from '../src/form-engine/focus-field';
 import { scanDocument, toDescriptor } from '../src/form-engine/scanner';
 import type { RuntimePageField } from '../src/form-engine/runtime-types';
 import { createRuntimeError } from '../src/runtime/runtime-errors';
@@ -88,8 +89,18 @@ export default defineUnlistedScript(() => {
     return { type: 'fill-result', requestId, results };
   }
 
+  function focusField(requestId: string, fieldId: string): PageResponse {
+    const stored = runtimeFields.get(fieldId);
+    const field = stored ? currentField(stored) : undefined;
+    const element = field?.elements[0];
+    if (!element) return { type: 'focus-result', requestId, fieldId, focused: false };
+    highlightField(element);
+    return { type: 'focus-result', requestId, fieldId, focused: true };
+  }
+
   browser.runtime.onMessage.addListener((message: PageMessage) => {
     if (message.type === 'scan-page') return Promise.resolve(scan(message.requestId));
+    if (message.type === 'focus-field') return Promise.resolve(focusField(message.requestId, message.fieldId));
     return fill(message.requestId, message.fields);
   });
 });

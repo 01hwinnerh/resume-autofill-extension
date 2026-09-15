@@ -17,7 +17,7 @@ export default defineBackground(() => {
   });
 
   browser.runtime.onMessage.addListener((message: RuntimeCommand) => {
-    if (message.type !== 'scan-active-tab' && message.type !== 'fill-confirmed-fields') return undefined;
+    if (!['scan-active-tab', 'fill-confirmed-fields', 'focus-active-field'].includes(message.type)) return undefined;
     return handleRuntimeCommand(controller, message);
   });
 });

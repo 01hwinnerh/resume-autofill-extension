@@ -1,53 +1,101 @@
-# Resume Autofill Assistant
+# 简历填写助手
 
-A local-first, review-first Chrome MV3 extension for accelerating job-application form filling. It uses a generic form engine, optional recruitment-platform adapters, and user-defined mappings; the current MVP focuses on standard HTML controls and a manual confirmation flow.
+一个基于 WXT、React 和 Chrome Manifest V3 的本地优先浏览器扩展。它扫描招聘表单，将页面字段与本机资料匹配，在用户预览确认后填写；**不会自动提交申请**。
 
-## Scope and safety
+## 功能
 
-- Scan the current page and show proposed field mappings, confidence, reasons, and status.
-- Fill only fields explicitly confirmed by the user, then verify the result in the page.
-- Preserve existing values and report individual failures without discarding successful fields.
-- Keep file uploads, CAPTCHA, SMS verification, login/OAuth, anti-automation checks, and final submission manual.
-- Store the local profile and mappings in browser local storage. The MVP has no backend, remote API, or AI dependency.
+- 侧边栏提供“填写助手 / 我的资料 / 自定义字段”三个明确入口。
+- 扫描标准 HTML 表单，展示匹配状态、置信度、页面当前值与候选填写值。
+- 未匹配的安全文本、日期和数字控件可输入本次值，也可保存为自定义字段并绑定当前网站。
+- 填写前按页面分组预览，逐项标明资料来源或本次输入；支持定位并高亮页面字段。
+- 直接编辑常用资料；完整资料中心支持分组编辑、国际申请信息折叠和保存前预览。
+- 自定义字段支持搜索、新建、编辑、删除、类型/策略设置及映射数量查看。
+- 保留页面已有值，填写后逐字段校验；文件上传、验证码、登录和最终提交始终手动完成。
 
-AI-assisted matching is optional future work and is not required by the MVP.
+## 隐私与安全边界
 
-## Local development
+资料、填写策略和网站映射仅保存在当前 Chrome 配置的扩展本地存储中。当前版本没有后端、远程同步、AI 服务、遥测或账号系统。扫描时不会把完整资料发送给页面；只有用户在预览面板最终确认的字段值才会传给当前活动页进行填写。
 
-Requirements: Node.js with Corepack enabled and pnpm available.
+扩展不会自动提交表单，不处理文件上传、CAPTCHA、短信验证、登录/OAuth、反自动化检查，也不会自动创建页面中的重复经历区块。
+
+## 安装依赖与开发
+
+要求：Node.js 20+、npm，以及本机安装的 Google Chrome（综合测试使用）。
 
 ```bash
-pnpm install
-pnpm dev
-pnpm typecheck
-pnpm test
-pnpm e2e
-pnpm build
+npm install
+npm run dev
 ```
 
-`pnpm dev` starts the WXT development server. `pnpm e2e` builds a test variant, starts the local fixture server at `http://127.0.0.1:4173`, and runs Playwright against the installed Google Chrome channel. The test variant grants only the localhost fixture permission; the normal production build omits `host_permissions`.
+仓库保留 `pnpm-lock.yaml`；团队如统一使用 Corepack/pnpm，也可以运行对应的 `pnpm` 命令。请勿在未计划升级时改动依赖版本。
 
-## Load the extension locally
+## 构建并加载到 Chrome
 
-1. Run `pnpm build`.
-2. Open `chrome://extensions` in Chrome and enable **Developer mode**.
-3. Click **Load unpacked** and choose the generated `.output/chrome-mv3` directory.
-4. Open the extension details and choose **Extension options** to edit the local profile.
-5. Open Chrome's **Side panel**, select **Resume Autofill Assistant**, then open a page containing a form.
-6. Click **扫描当前页面**, review the proposed matches, select the fields to fill, and click **填写已确认字段**.
+```bash
+npm run build
+```
 
-The current MVP is intended for local fixture/manual validation. It does not automatically submit applications, bypass verification, or upload files.
+1. 打开 `chrome://extensions`。
+2. 开启“开发者模式”。
+3. 点击“加载已解压的扩展程序”。
+4. 选择仓库中的 `.output/chrome-mv3`。
+5. 在扩展详情中打开侧边栏，或进入“扩展程序选项”维护完整资料。
 
-## Repository map
+### 日常更新
 
-- `entrypoints/`: WXT background service worker, page runtime, options page, and side panel.
-- `src/form-engine/`: DOM scanning, labels, fingerprints, and runtime field descriptors.
-- `src/matching/`: generic confidence-based profile-field matching.
-- `src/adapters/`: adapter contracts and registry for platform-specific hints.
-- `src/filling/`: standard-control filling and post-fill verification.
-- `src/profile/` and `src/storage/`: local profile and mapping persistence.
-- `src/runtime/`: message orchestration and runtime error handling.
-- `src/ui/`: review-first panel state and field/status views.
-- `tests/fixtures/` and `tests/e2e/`: local deterministic pages and browser coverage.
+拉取代码后，如依赖清单未变化，无需重复安装。运行 `npm run build`，然后在 `chrome://extensions` 对该扩展点击“重新加载”。若开发服务器正在运行，可使用 WXT 的开发构建与热更新。
 
-Detailed design decisions and MVP boundaries are recorded in [`docs/superpowers/specs/2026-09-14-resume-autofill-extension-design.md`](docs/superpowers/specs/2026-09-14-resume-autofill-extension-design.md). The implementation plan and task acceptance criteria are in [`docs/superpowers/plans/2026-09-14-resume-autofill-mvp.md`](docs/superpowers/plans/2026-09-14-resume-autofill-mvp.md). Verification evidence is tracked in [`docs/verification/mvp-checklist.md`](docs/verification/mvp-checklist.md).
+## 本地综合测试页
+
+单独启动 fixture 服务：
+
+```bash
+npm run fixtures:serve -- --port 4173
+```
+
+浏览器访问：
+
+- `http://127.0.0.1:4173/basic-form.html`
+- `http://127.0.0.1:4173/comprehensive-form.html`
+- `http://127.0.0.1:4173/controlled-form.html`
+- `http://127.0.0.1:4173/dynamic-form.html`
+
+自动化 E2E 会先构建测试扩展，再启动同一 fixture 服务：
+
+```bash
+npm run e2e
+```
+
+## 测试与质量检查
+
+```bash
+npm test
+npm run typecheck
+npm run build
+npm run e2e
+git diff --check
+```
+
+## 目录结构
+
+- `entrypoints/`：WXT 后台、页面 runtime、侧边栏和完整资料中心。
+- `src/form-engine/`：DOM 扫描、标签解析、字段指纹和运行时描述。
+- `src/matching/`：通用字段字典、评分、置信度和匹配解析。
+- `src/filling/`：标准控件填写与填写后校验。
+- `src/profile/`、`src/storage/`：本地资料、网站映射及持久化。
+- `src/runtime/`：活动标签页、消息编排和错误边界。
+- `src/ui/`：可复用视图、资料字段定义和纯 UI 逻辑。
+- `tests/unit/`：Vitest 与 Testing Library 单元/交互测试。
+- `tests/fixtures/`、`tests/e2e/`：本地综合页面及 Playwright 流程。
+
+## 路线图：Git 同步与配置迁移
+
+**导出/导入目前尚未实现，Git 同步也不是现有能力。** 后续计划按以下顺序推进：
+
+1. 为资料、字段和映射定义独立 schema 版本及兼容迁移器。
+2. 提供本地 JSON 导出/导入，并在写入前展示新增、覆盖、删除和冲突预览。
+3. 增加可选加密（用户自行保存密钥或口令），避免明文配置进入 Git。
+4. 提供可选的 Git 仓库同步流程，不默认上传任何资料。
+5. 为新电脑迁移提供明确步骤：旧设备导出 → 安全传输/同步 → 新设备预览冲突 → 确认导入 → 在目标网站重新验证映射。
+
+设计背景见 [`docs/superpowers/specs/2026-09-14-resume-autofill-extension-design.md`](docs/superpowers/specs/2026-09-14-resume-autofill-extension-design.md)。

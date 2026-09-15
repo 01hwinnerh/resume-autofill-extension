@@ -25,6 +25,7 @@ export type PageFieldKind = (typeof PAGE_FIELD_KINDS)[number];
 export interface PageFieldDescriptor {
   fieldId: string;
   kind: PageFieldKind;
+  inputType?: string;
   label: string;
   name?: string;
   htmlId?: string;

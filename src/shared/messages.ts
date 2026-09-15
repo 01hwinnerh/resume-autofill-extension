@@ -3,7 +3,7 @@ import type { ScanResult } from './form';
 import type { FillOutcome, VerificationOutcome } from '../filling/fill-types';
 import type { RuntimeError } from '../runtime/runtime-errors';
 
-export const MESSAGE_TYPES = ['scan-page', 'fill-fields'] as const;
+export const MESSAGE_TYPES = ['scan-page', 'fill-fields', 'focus-field'] as const;
 
 export interface ConfirmedFill {
   fieldId: string;
@@ -13,11 +13,13 @@ export interface ConfirmedFill {
 
 export type PageMessage =
   | { type: 'scan-page'; requestId: string }
-  | { type: 'fill-fields'; requestId: string; fields: ConfirmedFill[] };
+  | { type: 'fill-fields'; requestId: string; fields: ConfirmedFill[] }
+  | { type: 'focus-field'; requestId: string; fieldId: string };
 
 export type RuntimeCommand =
   | { type: 'scan-active-tab' }
-  | { type: 'fill-confirmed-fields'; fields: ConfirmedFill[] };
+  | { type: 'fill-confirmed-fields'; fields: ConfirmedFill[] }
+  | { type: 'focus-active-field'; fieldId: string };
 
 export interface PageScanResult {
   descriptors: import('./form').PageFieldDescriptor[];
@@ -33,8 +35,9 @@ export interface PageFillResult {
 export type PageResponse =
   | { type: 'scan-result'; requestId: string; result: PageScanResult }
   | { type: 'fill-result'; requestId: string; results: PageFillResult[] }
+  | { type: 'focus-result'; requestId: string; fieldId: string; focused: boolean }
   | { type: 'error'; requestId: string; error: RuntimeError };
 
 export type RuntimeCommandResponse =
-  | { ok: true; data: ScanResult | import('../runtime/application-controller').FillSummary }
+  | { ok: true; data: ScanResult | import('../runtime/application-controller').FillSummary | { fieldId: string; focused: boolean } }
   | { ok: false; error: RuntimeError };

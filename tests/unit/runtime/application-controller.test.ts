@@ -120,6 +120,19 @@ describe('application controller', () => {
     });
   });
 
+  it('locates a scanned field through the page runtime', async () => {
+    const sendMessage = vi.fn(async (_tabId: number, message: PageMessage): Promise<PageResponse> => ({
+      type: 'focus-result', requestId: message.requestId, fieldId: 'field-1', focused: true,
+    }));
+    const browser = {
+      tabs: { query: vi.fn(async () => [{ id: 7, url: 'https://job.test/app', title: 'Apply' }]), sendMessage },
+      scripting: { executeScript: vi.fn(async () => undefined) },
+    } satisfies BrowserPort;
+
+    await expect(createApplicationController(dependencies(browser)).focusField('field-1')).resolves.toEqual({ fieldId: 'field-1', focused: true });
+    expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'focus-field', fieldId: 'field-1' }));
+  });
+
   it('translates injection failures into a permission error', async () => {
     const browser = {
       tabs: {

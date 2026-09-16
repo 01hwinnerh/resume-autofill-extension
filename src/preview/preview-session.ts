@@ -113,6 +113,22 @@ export function buildFillPreviewSession(
   };
 }
 
+export function updateFillPreviewSessionValue(
+  session: FillPreviewSession,
+  fieldId: string,
+  value: ConfirmedFill['value'],
+  profileSections = session.profileSections,
+): FillPreviewSession {
+  const nextValue = stringifyFieldValue(value);
+  const profileKey = session.fields.find((field) => field.fieldId === fieldId)?.profileKey;
+  return {
+    ...session,
+    fields: session.fields.map((field) => field.fieldId === fieldId || (profileKey && field.profileKey === profileKey) ? { ...field, value } : field),
+    items: session.items.map((item) => item.fieldId === fieldId || (profileKey && item.profileKey === profileKey) ? { ...item, nextValue } : item),
+    profileSections,
+  };
+}
+
 export function buildProfilePreviewSession(profile: Profile): ProfilePreviewSession {
   const groups = new Map<string, ProfilePreviewSection>();
   for (const field of Object.values(profile.fields)) {

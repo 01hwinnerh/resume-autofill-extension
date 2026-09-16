@@ -5,6 +5,7 @@ import type { FieldValue } from '../shared/profile';
 
 import { readComboboxValue } from './combobox-control';
 import type { VerificationOutcome } from './fill-types';
+import { normalizeValueForControl } from './input-value';
 
 function mismatch(fieldId: string): VerificationOutcome {
   return {
@@ -57,9 +58,13 @@ export function verifyField(field: RuntimePageField, expected: FieldValue): Veri
     return { fieldId: field.fieldId, verified: true };
   }
 
-  if (!(isInputElement(control) || isTextareaElement(control))
-    || expectedValue === undefined
-    || normalizeLabel(control.value) !== normalizeLabel(expectedValue)) {
+  if (!(isInputElement(control) || isTextareaElement(control)) || expectedValue === undefined) {
+    return mismatch(field.fieldId);
+  }
+  const normalizedExpected = normalizeValueForControl(control, expectedValue);
+  if (normalizedExpected.reason
+    || normalizedExpected.value === undefined
+    || normalizeLabel(control.value) !== normalizeLabel(normalizedExpected.value)) {
     return mismatch(field.fieldId);
   }
   return { fieldId: field.fieldId, verified: true };

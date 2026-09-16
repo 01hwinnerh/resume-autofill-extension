@@ -106,6 +106,26 @@ describe('fillField', () => {
       .resolves.toMatchObject({ status: 'failed' });
   });
 
+  it('adapts a full profile date to a month input and verifies it', async () => {
+    const field = fieldFor('<input type="month">', 'text');
+    const element = field.elements[0] as HTMLInputElement;
+
+    await expect(fillField(field, '2026-09-08', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect(element.value).toBe('2026-09');
+    expect(verifyField(field, '2026-09-08')).toEqual({ fieldId: 'field-1', verified: true });
+  });
+
+  it('normalizes slash-separated dates before writing date controls', async () => {
+    const field = fieldFor('<input type="date">', 'text');
+    const element = field.elements[0] as HTMLInputElement;
+
+    await expect(fillField(field, '2026/9/8', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect(element.value).toBe('2026-09-08');
+    expect(verifyField(field, '2026/9/8')).toEqual({ fieldId: 'field-1', verified: true });
+  });
+
   it('selects a blank select by option value and emits bubbling events', async () => {
     const field = fieldFor('<select><option value="">Choose</option><option value="engineer">Engineer</option></select>', 'select');
     const element = field.elements[0] as HTMLSelectElement;

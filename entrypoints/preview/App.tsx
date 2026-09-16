@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { browser } from 'wxt/browser';
+import { ProfileStore } from '../../src/profile/profile-store';
 import type { PreviewSession, ProfilePreviewSection } from '../../src/preview/preview-session';
-import { previewStorageKey } from '../../src/preview/preview-session';
+import { buildProfilePreviewSession, previewStorageKey, updateFillPreviewSessionValue } from '../../src/preview/preview-session';
 import type { ConfirmedFill, RuntimeCommandResponse } from '../../src/shared/messages';
+import { LocalStorage } from '../../src/storage/local-storage';
+import { parseFieldValue } from '../../src/ui/profile-management';
+
+const profileStore = new ProfileStore(new LocalStorage());
 
 function mask(value: string): string {
   if (!value) return '空';
@@ -47,6 +52,46 @@ export default function App() {
       setLoading(false);
     });
   }, [id]);
+
+  function updateDraft(fieldId: string, value: string) {
+    setSession((current) => current?.kind === 'fill'
+      ? updateFillPreviewSessionValue(current, fieldId, value)
+      : current);
+    setFillCompleted(false);
+    setFailures([]);
+  }
+
+  async function persistEditedValue(fieldId: string, rawValue: string) {
+    if (!id || session?.kind !== 'fill') return;
+    const field = session.fields.find((candidate) => candidate.fieldId === fieldId);
+    if (!field) return;
+
+    try {
+      const profile = await profileStore.load();
+      const profileField = profile.fields[field.profileKey];
+      const value = profileField ? parseFieldValue(profileField.type, rawValue) : rawValue;
+      if (profileField?.type === 'number' && typeof value === 'number' && !Number.isFinite(value)) {
+        setMessage('请输入有效数字，当前修改尚未保存。');
+        return;
+      }
+
+      let profileSections = session.profileSections;
+      if (profileField) {
+        const updatedProfile = {
+          ...profile,
+          fields: { ...profile.fields, [field.profileKey]: { ...profileField, value } },
+        };
+        await profileStore.save(updatedProfile);
+        profileSections = buildProfilePreviewSession(updatedProfile).sections;
+      }
+      const updatedSession = updateFillPreviewSessionValue(session, fieldId, value, profileSections);
+      await browser.storage.session.set({ [previewStorageKey(id)]: updatedSession });
+      setSession(updatedSession);
+      setMessage(profileField ? '已同步更新本地个人资料。' : '已更新本次填写值。');
+    } catch (error) {
+      setMessage(`保存修改失败：${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }
 
   const groups = useMemo(() => {
     if (session?.kind !== 'fill') return [];
@@ -106,7 +151,7 @@ export default function App() {
     {active === 'profile' ? <ProfileView sections={profileSections} reveal={reveal} /> : session.kind === 'fill' && <>
       {session.items.length === 0 ? <div className="empty-state"><h2>当前没有可预览的字段</h2><p>请返回侧边栏，重新扫描页面并至少选择一个可填写字段。</p><button onClick={() => void returnToTarget()}>返回招聘页</button></div> : <div className="preview-layout">
         <aside><strong>填写摘要</strong><span>{session.items.length} 个字段</span><span>{new Set(session.items.map((item) => item.group)).size} 个分组</span><small>最终提交始终由你在招聘页面完成。</small></aside>
-        <div className="preview-content">{groups.map(([group, items]) => <section className="preview-section" key={group}><header><h2>{group}</h2><span>{items.length} 项</span></header><div className="comparison-table"><div className="table-head"><span>页面字段</span><span>当前值</span><span>将填写值</span><span>依据</span></div>{items.map((item) => <div className="comparison-row" key={item.fieldId}><strong>{item.label}</strong><span>{item.currentValue || '空'}</span><span>{reveal ? item.nextValue : mask(item.nextValue)}</span><span><b>{item.confidence === undefined ? '手动' : `${Math.round(item.confidence * 100)}%`}</b><small>{item.reasons.join('；') || item.source}</small></span></div>)}</div></section>)}</div>
+        <div className="preview-content">{groups.map(([group, items]) => <section className="preview-section" key={group}><header><h2>{group}</h2><span>{items.length} 项</span></header><div className="comparison-table"><div className="table-head"><span>页面字段</span><span>当前值</span><span>将填写值（可修改）</span><span>依据</span></div>{items.map((item) => <div className="comparison-row" key={item.fieldId}><strong>{item.label}</strong><span>{item.currentValue || '空'}</span><span><input className="edit-next-value" aria-label={`修改${item.label}的待填值`} type={reveal ? 'text' : 'password'} value={item.nextValue} onChange={(event) => updateDraft(item.fieldId, event.target.value)} onBlur={(event) => void persistEditedValue(item.fieldId, event.currentTarget.value)} /><small>失焦后同步到本地资料</small></span><span><b>{item.confidence === undefined ? '手动' : `${Math.round(item.confidence * 100)}%`}</b><small>{item.reasons.join('；') || item.source}</small></span></div>)}</div></section>)}</div>
       </div>}
     </>}
 

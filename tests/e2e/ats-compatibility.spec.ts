@@ -78,6 +78,8 @@ test('all-features ATS exposes every compatibility path and recognizes fields wi
   const fields = scan.result.descriptors;
   const name = fields.find((field) => field.label === '姓名')!;
   const degree = fields.find((field) => field.label === '学历类型')!;
+  const educationStart = fields.find((field) => field.label === '入学时间')!;
+  const educationEnd = fields.find((field) => field.label === '毕业时间')!;
   const company = fields.find((field) => field.label === '公司名称')!;
 
   expect(name).toMatchObject({ kind: 'text', autocomplete: 'name' });
@@ -98,10 +100,20 @@ test('all-features ATS exposes every compatibility path and recognizes fields wi
 
   const fill = await runRuntimeMessage(page, {
     type: 'fill-fields', requestId: 'fill-all-features-combobox',
-    fields: [{ fieldId: degree.fieldId, profileKey: 'educations.0.degreeType', value: '硕士研究生' }],
+    fields: [
+      { fieldId: degree.fieldId, profileKey: 'educations.0.degreeType', value: '硕士研究生' },
+      { fieldId: educationStart.fieldId, profileKey: 'educations.0.startDate', value: '2022-09-08' },
+      { fieldId: educationEnd.fieldId, profileKey: 'educations.0.endDate', value: '2026/06/30' },
+    ],
   });
-  expect(fill.results[0]).toMatchObject({ outcome: { status: 'filled' }, verification: { verified: true } });
+  expect(fill.results).toEqual(expect.arrayContaining([
+    expect.objectContaining({ fieldId: degree.fieldId, outcome: { status: 'filled', fieldId: degree.fieldId }, verification: { fieldId: degree.fieldId, verified: true } }),
+    expect.objectContaining({ fieldId: educationStart.fieldId, outcome: { status: 'filled', fieldId: educationStart.fieldId }, verification: { fieldId: educationStart.fieldId, verified: true } }),
+    expect.objectContaining({ fieldId: educationEnd.fieldId, outcome: { status: 'filled', fieldId: educationEnd.fieldId }, verification: { fieldId: educationEnd.fieldId, verified: true } }),
+  ]));
   await expect(page.locator('.selection-item')).toHaveText('硕士研究生');
+  await expect(page.locator('#formily-item-start_end_time input').nth(0)).toHaveValue('2022-09');
+  await expect(page.locator('#formily-item-start_end_time input').nth(1)).toHaveValue('2026-06');
   await expect(page.locator('#submit-state')).toHaveText('尚未提交');
 
   await page.locator('#reveal-dynamic').click();

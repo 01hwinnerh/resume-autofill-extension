@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildFillPreviewSession, buildProfilePreviewSession, previewStorageKey } from '../../../src/preview/preview-session';
+import { buildFillPreviewSession, buildProfilePreviewSession, previewStorageKey, updateFillPreviewSessionValue } from '../../../src/preview/preview-session';
 import type { Profile } from '../../../src/shared/profile';
 import type { ScanResult } from '../../../src/shared/form';
 
@@ -29,6 +29,14 @@ describe('preview sessions', () => {
     expect(session.kind).toBe('fill');
     expect(session.items).toEqual([expect.objectContaining({ label: '姓名', currentValue: '', nextValue: '示例候选人', source: '资料' })]);
     expect(previewStorageKey(session.id)).toContain(session.id);
+  });
+
+  it('updates the editable value used by both preview and confirmed fill', () => {
+    const session = buildFillPreviewSession(scan, profile, [{ fieldId: 'name', profileKey: 'identity.name', value: '示例候选人' }]);
+    const updated = updateFillPreviewSessionValue(session, 'name', '修改后的姓名');
+
+    expect(updated.items[0].nextValue).toBe('修改后的姓名');
+    expect(updated.fields[0].value).toBe('修改后的姓名');
   });
 
   it('builds readable profile sections', () => {

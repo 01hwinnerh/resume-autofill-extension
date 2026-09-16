@@ -5,6 +5,7 @@ import type { FieldValue } from '../shared/profile';
 
 import { selectComboboxOption } from './combobox-control';
 import type { FillOptions, FillOutcome } from './fill-types';
+import { normalizeValueForControl } from './input-value';
 import {
   dispatchChange,
   dispatchInputAndChange,
@@ -41,24 +42,6 @@ function hasExistingValue(field: RuntimePageField): boolean {
     && control.value.trim() !== '';
 }
 
-function validDateValue(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
-}
-
-function invalidInputReason(control: HTMLInputElement, value: string): string | undefined {
-  const type = control.type.toLowerCase();
-  if (type === 'date' && !validDateValue(value)) return 'date input requires a valid YYYY-MM-DD value';
-  if (type === 'month' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return 'month input requires a valid YYYY-MM value';
-  if (type === 'number' && (value.trim() === '' || !Number.isFinite(Number(value)))) return 'number input requires a numeric value';
-  return undefined;
-}
-
 function fillTextLike(field: RuntimePageField, value: string): FillOutcome {
   const control = firstControl(field);
   if (!control || !(isInputElement(control) || isTextareaElement(control) || isSelectElement(control))) {
@@ -67,12 +50,10 @@ function fillTextLike(field: RuntimePageField, value: string): FillOutcome {
   if (isInputElement(control) && control.type.toLowerCase() === 'file') {
     return failed(field.fieldId, 'file inputs are not supported');
   }
-  if (isInputElement(control)) {
-    const reason = invalidInputReason(control, value);
-    if (reason) return failed(field.fieldId, reason);
-  }
+  const normalized = normalizeValueForControl(control, value);
+  if (normalized.reason || normalized.value === undefined) return failed(field.fieldId, normalized.reason ?? 'invalid control value');
 
-  setNativeValue(control, value);
+  setNativeValue(control, normalized.value);
   dispatchInputAndChange(control);
   return { status: 'filled', fieldId: field.fieldId };
 }

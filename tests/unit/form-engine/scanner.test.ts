@@ -123,8 +123,8 @@ describe('scanDocument', () => {
       semanticSource: field.semanticSource,
     }))).toEqual([
       { kind: 'text', label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
-      { kind: 'text', label: '开始时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
-      { kind: 'text', label: '结束时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
+      { kind: 'text', label: '入学时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
+      { kind: 'text', label: '毕业时间', name: 'start_end_time', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
       { kind: 'combobox', label: '学历', name: 'degree', sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' },
       { kind: 'text', label: '学校名称', name: 'school', sectionLabel: '教育经历', sectionIndex: 1, semanticSource: 'formily-dom' },
     ]);

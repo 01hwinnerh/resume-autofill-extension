@@ -34,7 +34,7 @@ export function ApplicationRecordPrompt({ draft, onRecord, onOpenManager }: {
   }
 
   return <section className="application-confirm card" aria-label="记录本次申请">
-    <div className="application-confirm-heading"><div><h3>确认已经在招聘网站完成提交？</h3><p>扩展不会自动判断提交结果。只有你点击下方按钮后，才会保存投递记录。</p></div><span>手动确认</span></div>
+    <div className="application-confirm-heading"><h3>确认投递信息</h3></div>
     {!saved && <div className="application-fields">
       <label><span>公司</span><input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="例如：某某科技" /></label>
       <label><span>职位</span><input value={role} onChange={(event) => setRole(event.target.value)} placeholder="例如：前端工程师" /></label>

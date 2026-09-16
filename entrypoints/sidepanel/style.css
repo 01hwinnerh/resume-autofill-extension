@@ -16,7 +16,7 @@ button { cursor: pointer; }
 .assistant-empty { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px; margin-bottom: 10px; padding: 14px; }.assistant-empty h2 { margin: 0; font-size: 15px; }.assistant-empty p { margin: 2px 0; color: #718097; font-size: 11px; }
 .completion-ring { display: grid; width: 54px; height: 54px; place-items: center; border: 5px solid #cde2ff; border-top-color: #1677ff; border-radius: 50%; color: #1263cc; font-weight: 800; }.completion-groups { display: flex; grid-column: 1 / -1; flex-wrap: wrap; gap: 6px; }.completion-groups span { padding: 3px 7px; border-radius: 99px; background: #f0f5fb; color: #65738a; font-size: 10px; }
 .scan-card { display: flex; align-items: center; gap: 10px; padding: 12px; }.scan-card div { display: grid; flex: 1; min-width: 0; }.scan-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.scan-card span { color: #7a859a; font-size: 11px; }
-.scan-card button, .sticky-actions button, .result-panel button, .inline-save button, .list-toolbar button, .editor-actions button, .confirm-fill, .manual-editor button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 10px; background: linear-gradient(135deg, #1677ff, #2364d8); color: white; font-weight: 650; box-shadow: 0 5px 12px #1677ff2c; }
+.scan-card button, .manual-application-card button, .sticky-actions button, .result-panel button, .inline-save button, .list-toolbar button, .editor-actions button, .confirm-fill, .manual-editor button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 10px; background: linear-gradient(135deg, #1677ff, #2364d8); color: white; font-weight: 650; box-shadow: 0 5px 12px #1677ff2c; }
 .secondary-button, .field-actions button, .preview-heading button, .item-actions button { min-height: 34px; border: 1px solid #d8e2ef; border-radius: 9px; background: #fff; color: #405470; box-shadow: none; }
 button:disabled { cursor: not-allowed; opacity: .48; box-shadow: none; }.notice, .success-notice { padding: 9px 11px; border: 1px solid #ffd8d8; border-radius: 10px; background: #fff3f3; color: #b42318; }.success-notice { border-color: #bde9cf; background: #effaf3; color: #15743b; }
 .status-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 12px 0; }.status-summary button { display: grid; min-height: 54px; place-content: center; border: 1px solid #e2e9f4; border-radius: 12px; background: rgba(255,255,255,.88); color: #68748a; }.status-summary button strong { color: #25324b; font-size: 17px; line-height: 1.1; }.status-summary button span { font-size: 11px; }.status-summary button.active { border-color: #7db3ff; background: #eaf3ff; color: #1567d3; box-shadow: inset 0 0 0 1px #bed9ff; }
@@ -86,7 +86,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .application-confirm-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
 .application-confirm h3 { margin:0; font-size:14px; }
 .application-confirm p { margin:3px 0 0; color:#6d7890; font-size:11px; }
-.application-confirm-heading > span { flex:none; padding:3px 7px; border-radius:99px; color:#1264cb; background:#eaf3ff; font-size:10px; font-weight:700; }
 .application-fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .application-fields label { display:grid; gap:4px; color:#53627a; font-size:11px; }
 .application-fields input { min-width:0; min-height:36px; padding:7px 9px; border:1px solid #dce5f0; border-radius:8px; }
@@ -114,9 +113,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .copy-success { color: #15743b; }
 .copy-failed { color: #b42318; }
 
-.manual-application-card { display:flex; align-items:center; gap:10px; padding:11px 12px; }
-.manual-application-card > div { display:grid; flex:1; min-width:0; }
-.manual-application-card strong { color:#293956; font-size:12px; }
-.manual-application-card span { color:#728098; font-size:10px; }
-.manual-application-card button { flex:none; min-height:32px; padding:0 10px; font-size:10px; }
+.manual-application-card { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 12px; }
+.manual-application-card strong { flex:1; color:#293956; font-size:13px; }
+.manual-application-card button { flex:none; min-height:36px; padding:0 12px; font-size:11px; }
 @media (max-width:390px) { .manual-application-card { align-items:stretch; flex-direction:column; } .manual-application-card button { width:100%; } }

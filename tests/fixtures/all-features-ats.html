@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Aime 简历自动填写扩展一站式功能验收页" />
+  <meta property="og:title" content="高级前端工程师｜星云科技" />
+  <title>高级前端工程师｜星云科技招聘</title>
+  <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"JobPosting","title":"高级前端工程师","hiringOrganization":{"@type":"Organization","name":"星云科技"}}
+  </script>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#63708a; --line:#dce5f2; --blue:#246bfd; --soft:#f4f7fc; --green:#168c64; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:linear-gradient(145deg,#edf3ff 0,#f8faff 42%,#eef8f5 100%); color:var(--ink); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(1060px,calc(100% - 32px)); margin:32px auto 72px; }
+    .hero,.panel { background:rgba(255,255,255,.96); border:1px solid rgba(220,229,242,.9); border-radius:20px; box-shadow:0 16px 45px rgba(43,64,101,.08); }
+    .hero { padding:28px 30px; display:grid; grid-template-columns:1fr auto; gap:24px; align-items:start; }
+    h1,h2,h3,p { margin-top:0; } h1 { margin-bottom:8px; font-size:30px; } h2 { margin-bottom:6px; font-size:20px; } h3 { margin-bottom:12px; font-size:16px; }
+    .subtitle,.hint { color:var(--muted); } .subtitle { margin-bottom:0; }
+    .badge { display:inline-flex; align-items:center; gap:7px; padding:7px 11px; border-radius:999px; background:#e9f7f1; color:var(--green); font-weight:700; white-space:nowrap; }
+    .badge::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--green); }
+    .checklist { margin:18px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:8px; list-style:none; }
+    .checklist li { padding:6px 10px; border-radius:999px; background:#eef3ff; color:#315cac; font-size:13px; font-weight:650; }
+    .panel { margin-top:18px; padding:24px 26px; }
+    .section-head { display:flex; justify-content:space-between; gap:20px; align-items:start; margin-bottom:18px; }
+    .section-head p { margin-bottom:0; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 18px; }
+    .field,label { display:grid; gap:6px; font-weight:650; }
+    .wide { grid-column:1/-1; }
+    input,select,textarea { width:100%; min-width:0; padding:10px 12px; border:1px solid #b9c7da; border-radius:9px; background:#fff; color:var(--ink); font:inherit; outline:none; }
+    input:focus,select:focus,textarea:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(36,107,253,.12); }
+    textarea { min-height:92px; resize:vertical; }
+    fieldset { border:1px solid var(--line); border-radius:12px; padding:14px; margin:0; } legend { padding:0 6px; font-weight:750; }
+    .choices { display:flex; gap:16px; flex-wrap:wrap; } .choices label { display:flex; grid-template-columns:auto 1fr; align-items:center; gap:7px; font-weight:500; }
+    .choices input { width:auto; }
+    .applyFormModuleWrapper__all { border:1px solid var(--line); border-radius:15px; padding:18px; background:#fbfcff; }
+    .apply-form-array-card__all { padding:16px; border-radius:12px; background:#fff; box-shadow:inset 0 0 0 1px #e7edf6; }
+    .ud-formily-item { margin:13px 0; } .ud-formily-item-label { margin-bottom:6px; font-weight:700; }
+    .combo-wrap { position:relative; } .selection-item { display:block; min-height:22px; margin-bottom:5px; color:#245bd6; font-weight:700; }
+    [role=listbox] { position:absolute; z-index:3; left:0; right:0; top:100%; margin-top:4px; padding:5px; border:1px solid #b9c7da; border-radius:10px; background:#fff; box-shadow:0 12px 28px rgba(30,48,81,.14); }
+    [role=option] { padding:9px 10px; border-radius:7px; cursor:pointer; } [role=option]:hover { background:#edf3ff; }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:18px; }
+    button { padding:10px 15px; border:0; border-radius:9px; background:var(--blue); color:#fff; font:inherit; font-weight:750; cursor:pointer; }
+    button.secondary { background:#eaf0fc; color:#2f5aa8; } button.submit { background:#132a56; }
+    output { color:var(--green); font-weight:700; }
+    iframe { width:100%; min-height:300px; border:1px solid #cbd7e8; border-radius:12px; background:#fff; }
+    .dynamic-slot:empty { display:none; }
+    .test-note { padding:12px 14px; border-left:4px solid var(--blue); border-radius:8px; background:#f0f5ff; color:#3b4b68; }
+    @media (max-width:720px) { .hero { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } .wide { grid-column:auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <div>
+        <h1>简历自动填写 · 一站式验收页</h1>
+        <p class="subtitle">模拟“星云科技｜高级前端工程师”的完整 ATS 投递表单。即使个人资料为空，扩展也应识别字段并标记为“待补资料”。</p>
+        <ul class="checklist">
+          <li>标准控件</li><li>安全下拉</li><li>Formily</li><li>动态字段</li><li>iframe</li><li>投递信息</li><li>禁止自动提交</li>
+        </ul>
+      </div>
+      <span class="badge">测试页已就绪</span>
+    </header>
+
+    <form id="application-form">
+      <section class="panel">
+        <div class="section-head"><div><h2>1. 基本信息</h2><p class="hint">验证文本、邮箱、电话、日期、原生下拉、单选、复选和长文本。</p></div></div>
+        <div class="grid">
+          <label>姓名<input name="full_name" autocomplete="name" /></label>
+          <label>邮箱<input name="email" type="email" autocomplete="email" /></label>
+          <label>手机号<input name="phone" type="tel" autocomplete="tel" /></label>
+          <label>出生日期<input name="birth_date" type="date" autocomplete="bday" /></label>
+          <label>现居地<input name="current_location" autocomplete="address-level2" /></label>
+          <label>求职状态<select name="job_seeking_status"><option value="">请选择</option><option>在校学生</option><option>在职看机会</option><option>离职可入职</option></select></label>
+          <fieldset><legend>性别</legend><div class="choices"><label><input type="radio" name="gender" value="男" />男</label><label><input type="radio" name="gender" value="女" />女</label><label><input type="radio" name="gender" value="不透露" />不透露</label></div></fieldset>
+          <fieldset><legend>授权确认</legend><div class="choices"><label><input type="checkbox" name="consent" />我确认信息真实</label></div></fieldset>
+          <label class="wide">自我评价<textarea name="self_evaluation" placeholder="请简要介绍个人优势"></textarea></label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><div><h2>2. 教育经历（Formily + Combobox）</h2><p class="hint">验证 data-form-field 元数据、日期区间和“精确且唯一才选择”的自定义下拉。</p></div></div>
+        <div class="applyFormModuleWrapper__all">
+          <div id="formily-item-education_list">
+            <article class="apply-form-array-card__all">
+              <div class="ud-formily-item" id="formily-item-school" data-form-field-id="school" data-form-field-name="school" data-form-field-i18n-name="学校名称">
+                <div class="ud-formily-item-label"><label for="school-input">学校名称</label></div><input id="school-input" class="ud__native-input" />
+              </div>
+              <div class="ud-formily-item" id="formily-item-major" data-form-field-id="major" data-form-field-name="major" data-form-field-i18n-name="专业">
+                <div class="ud-formily-item-label"><label for="major-input">专业</label></div><input id="major-input" class="ud__native-input" />
+              </div>
+              <div class="ud-formily-item" id="formily-item-start_end_time" data-form-field-id="start_end_time" data-form-field-name="start_end_time" data-form-field-i18n-name="起止时间">
+                <div class="ud-formily-item-label"><span>起止时间</span></div><div class="grid"><input class="ud__native-input" type="month" placeholder="开始月份" /><input class="ud__native-input" type="month" placeholder="结束月份" /></div>
+              </div>
+              <div class="ud-formily-item" id="formily-item-education_type" data-form-field-id="education_type" data-form-field-name="education_type" data-form-field-i18n-name="学历类型">
+                <div class="ud-formily-item-label"><label for="degree-combobox">学历类型</label></div>
+                <div class="combo-wrap"><span class="selection-item" data-selected-value=""></span><input id="degree-combobox" class="ud__native-input" type="search" role="combobox" aria-controls="degree-options" aria-expanded="false" autocomplete="off" /><div id="degree-options" role="listbox" hidden><div role="option" data-value="本科">本科</div><div role="option" data-value="硕士研究生">硕士研究生</div><div role="option" data-value="博士研究生">博士研究生</div></div></div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><div><h2>3. 动态字段</h2><p class="hint">扫描后点击按钮，扩展应提醒发现新增字段，可重新扫描。</p></div></div>
+        <div id="dynamic-slot" class="dynamic-slot grid"></div>
+        <div class="actions"><button id="reveal-dynamic" type="button" class="secondary">添加求职意向字段</button><output id="dynamic-state">尚未添加</output></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><div><h2>4. iframe 工作经历</h2><p class="hint">验证同源 iframe 中字段的扫描、定位和填写。</p></div></div>
+        <iframe title="工作经历表单" src="/iframe-ats-form.html"></iframe>
+      </section>
+
+      <section class="panel">
+        <h2>5. 手动投递安全边界</h2>
+        <p class="test-note">扩展只能填写字段，不能替你点击最终提交。点击下方按钮只会更新本测试页状态，用于确认“最终提交必须由用户触发”。</p>
+        <div class="actions"><button id="manual-submit" type="submit" class="submit">我手动提交申请</button><output id="submit-state">尚未提交</output></div>
+      </section>
+    </form>
+  </main>
+  <script>
+    const comboInput = document.querySelector('[role="combobox"]');
+    const listbox = document.querySelector('[role="listbox"]');
+    const selected = document.querySelector('.selection-item');
+    const openCombo = () => { listbox.hidden = false; comboInput.setAttribute('aria-expanded', 'true'); };
+    comboInput.addEventListener('mousedown', openCombo);
+    comboInput.addEventListener('focus', openCombo);
+    comboInput.addEventListener('input', openCombo);
+    listbox.addEventListener('mousedown', event => event.preventDefault());
+    listbox.addEventListener('click', event => {
+      const option = event.target.closest('[role="option"]');
+      if (!option) return;
+      selected.textContent = option.textContent;
+      selected.dataset.selectedValue = option.dataset.value;
+      comboInput.value = '';
+      comboInput.setAttribute('aria-valuetext', option.dataset.value);
+      comboInput.setAttribute('aria-expanded', 'false');
+      listbox.hidden = true;
+      comboInput.dispatchEvent(new Event('change', { bubbles:true }));
+    });
+
+    document.querySelector('#reveal-dynamic').addEventListener('click', () => {
+      const slot = document.querySelector('#dynamic-slot');
+      if (slot.children.length) return;
+      slot.innerHTML = '<label>期望职位<input name="preferred_role" /></label><label>期望城市<input name="preferred_city" autocomplete="address-level2" /></label><label class="wide">专业技能<textarea name="skills" placeholder="例如 TypeScript、React"></textarea></label>';
+      document.querySelector('#dynamic-state').textContent = '已添加 3 个动态字段';
+    });
+
+    document.querySelector('#application-form').addEventListener('submit', event => {
+      event.preventDefault();
+      document.querySelector('#submit-state').textContent = '已检测到用户手动提交';
+    });
+  </script>
+</body>
+</html>

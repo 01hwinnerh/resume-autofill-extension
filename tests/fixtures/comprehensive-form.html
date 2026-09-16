@@ -86,6 +86,16 @@
         </div>
       </fieldset>
 
+      <fieldset data-record="education-2"><legend>教育经历</legend>
+        <p class="section-help">第二段教育经历（页面已存在，扩展不会点击新增按钮）。</p>
+        <div class="grid">
+          <div class="field"><label for="edu2-school">毕业院校</label><input id="edu2-school" name="educationSchool2" /></div>
+          <div class="field"><label for="edu2-major">所学专业</label><input id="edu2-major" name="educationMajor2" /></div>
+          <div class="field"><label for="edu2-start">入学时间</label><input id="edu2-start" name="educationStartDate2" type="date" /></div>
+          <div class="field"><label for="edu2-end">毕业时间</label><input id="edu2-end" name="educationEndDate2" type="date" /></div>
+        </div>
+      </fieldset>
+
       <fieldset><legend>工作经历</legend>
         <div class="grid">
           <div class="field"><label for="work-company">公司名称</label><input id="work-company" name="workCompany" autocomplete="organization" /></div>
@@ -108,6 +118,16 @@
         </div>
       </fieldset>
 
+      <fieldset data-record="work-2"><legend>工作经历</legend>
+        <p class="section-help">第二段工作经历（页面已存在）。</p>
+        <div class="grid">
+          <div class="field"><label for="work2-company">公司名称</label><input id="work2-company" name="workCompany2" /></div>
+          <div class="field"><label for="work2-title">职位</label><input id="work2-title" name="workTitle2" /></div>
+          <div class="field"><label for="work2-start">工作开始时间</label><input id="work2-start" name="workStartDate2" type="date" /></div>
+          <div class="field wide"><label for="work2-description">工作内容</label><textarea id="work2-description" name="workDescription2"></textarea></div>
+        </div>
+      </fieldset>
+
       <fieldset><legend>项目经历</legend>
         <div class="grid">
           <div class="field"><label for="project-name">项目名称</label><input id="project-name" name="projectName" /></div>
@@ -122,6 +142,16 @@
           <div class="field wide"><label for="project-responsibilities">项目职责</label><textarea id="project-responsibilities" name="projectResponsibilities"></textarea></div>
           <div class="field wide"><label for="project-achievements">项目成果</label><textarea id="project-achievements" name="projectAchievements"></textarea></div>
           <div class="field wide"><label for="project-attachment">附件引用</label><input id="project-attachment" name="projectAttachmentReference" type="text" placeholder="仅填写附件名称或公开测试链接" /></div>
+        </div>
+      </fieldset>
+
+      <fieldset data-record="project-2"><legend>项目经历</legend>
+        <p class="section-help">第二段项目经历（页面已存在）。</p>
+        <div class="grid">
+          <div class="field"><label for="project2-name">项目名称</label><input id="project2-name" name="projectName2" /></div>
+          <div class="field"><label for="project2-role">项目角色</label><input id="project2-role" name="projectRole2" /></div>
+          <div class="field"><label for="project2-start">项目开始时间</label><input id="project2-start" name="projectStartDate2" type="date" /></div>
+          <div class="field wide"><label for="project2-description">项目描述</label><textarea id="project2-description" name="projectDescription2"></textarea></div>
         </div>
       </fieldset>
 
@@ -143,6 +173,7 @@
           <div class="field wide manual"><label for="resume-file">简历附件（需手工处理）</label><input id="resume-file" name="resumeFile" type="file" accept=".pdf,.doc,.docx" /><p class="hint">插件不应扫描或填充文件控件；本页面不会上传文件。</p></div>
         </div>
       </fieldset>
+      <div class="actions secondary-actions"><button id="add-education" type="button">新增教育经历</button><button id="add-work" type="button">新增工作经历</button><button id="add-project" type="button">新增项目经历</button></div>
       <div class="actions"><button id="submit" type="submit">提交测试申请</button><span id="submit-status" role="status" aria-live="polite">尚未提交</span></div>
     </form>
 
@@ -155,6 +186,8 @@
   </main>
   <script>
     window.__submitted = false;
+    window.__addExperienceClicks = 0;
+    ['#add-education', '#add-work', '#add-project'].forEach((selector) => document.querySelector(selector).addEventListener('click', () => { window.__addExperienceClicks += 1; }));
     document.querySelector('#application-form').addEventListener('submit', (event) => {
       event.preventDefault();
       window.__submitted = true;

@@ -135,6 +135,22 @@ describe('resolveMatches', () => {
     expect(match.selected).toMatchObject({ profileKey: 'identity.name', source: 'adapter' });
   });
 
+  it('keeps custom combobox controls manual even when mappings or adapter hints exist', () => {
+    const field = descriptor({ manualOnly: true, label: '学历' });
+    const [match] = resolveMatches(
+      [field],
+      profileWith({ 'educations.0.degree': {} }),
+      {
+        mappings: [mapping(field, 'educations.0.degree')],
+        pageContext: { host: 'jobs.bytedance.com', path: '/campus/resume/123/apply' },
+        adapterHints: [{ fieldId: field.fieldId, profileKey: 'educations.0.degree', score: 0.96, reason: 'ByteDance field' }],
+      },
+    );
+
+    expect(match).toMatchObject({ status: 'unsupported', candidates: [] });
+    expect(match.selected).toBeUndefined();
+  });
+
   it('does not let an adapter hint override a never-policy profile field', () => {
     const field = descriptor();
     const [match] = resolveMatches(

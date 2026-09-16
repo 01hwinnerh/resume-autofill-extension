@@ -13,3 +13,15 @@ input, textarea, select { width: 100%; min-height: 40px; padding: 9px 11px; bord
 .management-entry, .developer-info { margin-top: 14px; }.developer-info > p { margin: 0 18px; color: #748198; }.developer-info ul { display: grid; gap: 6px; margin: 12px 18px 18px; padding: 0; list-style: none; }.developer-info li { display: flex; justify-content: space-between; gap: 12px; }.developer-info code { color: #6b7890; }
 .save-bar { position: fixed; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding: 13px max(18px, calc((100vw - 1080px) / 2)); border-top: 1px solid #dce5f1; background: rgba(255,255,255,.94); box-shadow: 0 -8px 25px rgba(30,57,92,.09); }.save-bar span { color: #6e7c92; }.save-bar button { min-width: 150px; min-height: 42px; border: 0; border-radius: 10px; background: linear-gradient(135deg, #1677ff, #2364d8); color: white; cursor: pointer; font-weight: 700; }.save-bar button:disabled { cursor: not-allowed; opacity: .5; }
 @media (max-width: 700px) { .options-page { width: min(100% - 24px, 1080px); }.profile-grid, .profile-preview { grid-template-columns: 1fr; }.profile-grid label.wide { grid-column: auto; }.intro-card { align-items: flex-start; }.save-bar { padding: 10px 12px; }.save-bar span { flex: 1; }.save-bar button { min-width: 120px; } }
+
+button:hover:not(:disabled) { filter: brightness(.97); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #1677ff33; outline-offset: 2px; }
+.experience-records { display:grid; gap:12px; padding:8px 18px 18px; border-top:1px solid #eef2f7; }
+.experience-record { overflow:hidden; border:1px solid #dfe7f2; border-radius:12px; background:#fbfdff; }
+.experience-record header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid #e8eef6; }
+.experience-record h3 { margin:0; font-size:14px; }
+.record-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.record-actions button, .add-record { min-height:32px; padding:4px 10px; border:1px solid #cad8e9; border-radius:8px; background:white; color:#355170; cursor:pointer; }
+.record-actions .danger { color:#b42318; }
+.experience-record .profile-grid { border:0; padding:14px; }
+.add-record { justify-self:start; color:#1264cb; font-weight:700; }

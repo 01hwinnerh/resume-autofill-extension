@@ -1,5 +1,6 @@
 import { defineBackground } from 'wxt/utils/define-background';
 import { AdapterRegistry } from '../src/adapters/adapter-registry';
+import { ByteDanceJobsAdapter } from '../src/adapters/bytedance-jobs-adapter';
 import { createApplicationController, handleRuntimeCommand } from '../src/runtime/application-controller';
 import { LocalStorage } from '../src/storage/local-storage';
 import { MappingStore } from '../src/storage/mapping-store';
@@ -9,11 +10,13 @@ import { browser } from 'wxt/browser';
 
 export default defineBackground(() => {
   const storage = new LocalStorage();
+  const adapterRegistry = new AdapterRegistry();
+  adapterRegistry.register(new ByteDanceJobsAdapter());
   const controller = createApplicationController({
     browser,
     profileStore: new ProfileStore(storage),
     mappingStore: new MappingStore(storage),
-    adapterRegistry: new AdapterRegistry(),
+    adapterRegistry,
   });
 
   browser.runtime.onMessage.addListener((message: RuntimeCommand) => {

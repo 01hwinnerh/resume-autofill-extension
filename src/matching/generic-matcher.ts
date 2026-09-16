@@ -1,8 +1,8 @@
 import type { FieldMatch, MatchCandidate, PageFieldDescriptor } from '../shared/form';
-import type { UserFieldMapping } from '../shared/mapping';
-import type { Profile } from '../shared/profile';
+import { normalizeMappingScope, type UserFieldMapping } from '../shared/mapping';
+import type { Profile, ProfileField, ProfileFieldType } from '../shared/profile';
 import { assignConfidenceStatus } from './confidence';
-import { findDictionaryField } from './field-dictionary';
+import { FIELD_DICTIONARY, findDictionaryField } from './field-dictionary';
 import { SCORE_WEIGHTS, scoreField } from './score-field';
 
 export interface MatchOptions {
@@ -22,6 +22,12 @@ function createUserCandidate(profileKey: string): MatchCandidate {
   };
 }
 
+function hasIdentitySignal(reasons: string[]): boolean {
+  return reasons.some((reason) => reason.startsWith('页面标签')
+    || reason.startsWith('autocomplete')
+    || reason.startsWith('字段 name 或 id'));
+}
+
 function genericCandidates(descriptor: PageFieldDescriptor, profile: Profile): MatchCandidate[] {
   return Object.values(profile.fields)
     .flatMap((profileField) => {
@@ -31,19 +37,42 @@ function genericCandidates(descriptor: PageFieldDescriptor, profile: Profile): M
       }
 
       const { score, reasons } = scoreField(descriptor, profileField, dictionaryField);
-      return score > SCORE_WEIGHTS.typeCompatibility
+      return hasIdentitySignal(reasons) && score > SCORE_WEIGHTS.typeCompatibility
         ? [{ profileKey: profileField.key, score, source: 'generic' as const, reasons }]
         : [];
     })
     .sort((left, right) => right.score - left.score);
 }
 
-function mappingAppliesToPage(
-  mapping: UserFieldMapping,
-  pageContext: MatchOptions['pageContext'],
-): boolean {
-  return mapping.scope.host === pageContext.host
-    && (mapping.scope.path === undefined || mapping.scope.path === pageContext.path);
+function inferredProfileType(descriptor: PageFieldDescriptor): ProfileFieldType {
+  if (descriptor.kind === 'checkbox') return 'boolean';
+  if (descriptor.kind === 'select' || descriptor.kind === 'radio' || descriptor.kind === 'combobox') return 'enum';
+  if (descriptor.inputType === 'date' || descriptor.inputType === 'month') return 'date';
+  if (descriptor.inputType === 'number') return 'number';
+  return 'text';
+}
+
+function recognitionCandidates(descriptor: PageFieldDescriptor): MatchCandidate[] {
+  return FIELD_DICTIONARY.flatMap((dictionaryField) => {
+    const profileField: ProfileField = {
+      key: dictionaryField.key.replace('$', String(descriptor.sectionIndex ?? 0)),
+      label: dictionaryField.aliases[0] ?? dictionaryField.key,
+      type: inferredProfileType(descriptor),
+      value: null,
+      policy: 'auto',
+    };
+    const { score, reasons } = scoreField(descriptor, profileField, dictionaryField);
+    return hasIdentitySignal(reasons) && score > SCORE_WEIGHTS.typeCompatibility
+      ? [{ profileKey: profileField.key, score, source: 'generic' as const, reasons }]
+      : [];
+  }).sort((left, right) => right.score - left.score);
+}
+
+function mappingPriority(mapping: UserFieldMapping, pageContext: MatchOptions['pageContext']): number {
+  const scope = normalizeMappingScope(mapping.scope);
+  if (scope.kind === 'path') return scope.host === pageContext.host && scope.path === pageContext.path ? 3 : 0;
+  if (scope.kind === 'host') return scope.host === pageContext.host ? 2 : 0;
+  return 1;
 }
 
 function matchField(
@@ -52,18 +81,22 @@ function matchField(
   mappings: UserFieldMapping[],
   pageContext: MatchOptions['pageContext'],
 ): FieldMatch {
-  const mapping = mappings.find((item) => (
-    item.fingerprint === descriptor.fingerprint && mappingAppliesToPage(item, pageContext)
-  ));
+  const mapping = mappings
+    .filter((item) => item.fingerprint === descriptor.fingerprint && mappingPriority(item, pageContext) > 0)
+    .sort((left, right) => mappingPriority(right, pageContext) - mappingPriority(left, pageContext))[0];
   const mappedField = mapping ? profile.fields[mapping.profileKey] : undefined;
-  const candidates = mappedField ? [createUserCandidate(mappedField.key)] : genericCandidates(descriptor, profile);
+  const configuredCandidates = mappedField ? [createUserCandidate(mappedField.key)] : genericCandidates(descriptor, profile);
+  const candidates = configuredCandidates.length ? configuredCandidates : recognitionCandidates(descriptor);
   const selected = candidates[0];
+  const configuredField = selected ? profile.fields[selected.profileKey] : undefined;
 
   return {
     descriptor,
     candidates,
     selected,
-    status: assignConfidenceStatus(candidates, selected ? profile.fields[selected.profileKey].policy : 'auto'),
+    status: selected
+      ? configuredField ? assignConfidenceStatus(candidates, configuredField.policy) : 'missing_profile'
+      : 'unrecognized',
   };
 }
 

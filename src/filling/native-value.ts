@@ -1,14 +1,17 @@
+import { eventFor, isInputElement, isTextareaElement } from '../form-engine/control-elements';
+
 type ValueControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 function nativeSetter<T extends HTMLElement>(element: T, property: 'value' | 'checked'): ((value: string | boolean) => void) | undefined {
-  const prototype = property === 'value'
-    ? element instanceof HTMLInputElement
-      ? HTMLInputElement.prototype
-      : element instanceof HTMLTextAreaElement
-        ? HTMLTextAreaElement.prototype
-        : HTMLSelectElement.prototype
-    : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(prototype, property)?.set;
+  const view = element.ownerDocument.defaultView;
+  const prototype = property === 'checked'
+    ? view?.HTMLInputElement.prototype
+    : isInputElement(element)
+      ? view?.HTMLInputElement.prototype
+      : isTextareaElement(element)
+        ? view?.HTMLTextAreaElement.prototype
+        : view?.HTMLSelectElement.prototype;
+  const setter = prototype ? Object.getOwnPropertyDescriptor(prototype, property)?.set : undefined;
 
   return setter as ((value: string | boolean) => void) | undefined;
 }
@@ -26,10 +29,10 @@ export function setNativeChecked(element: HTMLInputElement, checked: boolean): v
 }
 
 export function dispatchInputAndChange(element: HTMLElement): void {
-  element.dispatchEvent(new Event('input', { bubbles: true }));
-  element.dispatchEvent(new Event('change', { bubbles: true }));
+  element.dispatchEvent(eventFor(element, 'input'));
+  element.dispatchEvent(eventFor(element, 'change'));
 }
 
 export function dispatchChange(element: HTMLElement): void {
-  element.dispatchEvent(new Event('change', { bubbles: true }));
+  element.dispatchEvent(eventFor(element, 'change'));
 }

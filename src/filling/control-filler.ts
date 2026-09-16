@@ -1,8 +1,11 @@
-import type { RuntimePageField } from '../form-engine/runtime-types';
+import { isInputElement, isSelectElement, isTextareaElement } from '../form-engine/control-elements';
 import { normalizeLabel } from '../form-engine/normalize-label';
+import type { RuntimePageField } from '../form-engine/runtime-types';
 import type { FieldValue } from '../shared/profile';
 
+import { selectComboboxOption } from './combobox-control';
 import type { FillOptions, FillOutcome } from './fill-types';
+import { normalizeValueForControl } from './input-value';
 import {
   dispatchChange,
   dispatchInputAndChange,
@@ -27,35 +30,37 @@ function hasExistingValue(field: RuntimePageField): boolean {
   if (!control) return false;
 
   if (field.kind === 'radio') {
-    return field.elements.some((element) => element instanceof HTMLInputElement && element.checked);
+    return field.elements.some((element) => isInputElement(element) && element.checked);
   }
   if (field.kind === 'checkbox') {
-    return control instanceof HTMLInputElement && control.checked;
+    return isInputElement(control) && control.checked;
   }
-  return (control instanceof HTMLInputElement
-    || control instanceof HTMLTextAreaElement
-    || control instanceof HTMLSelectElement) && control.value.trim() !== '';
+  if (field.kind === 'combobox') {
+    return typeof field.currentValue === 'string' && field.currentValue.trim() !== '';
+  }
+  return (isInputElement(control) || isTextareaElement(control) || isSelectElement(control))
+    && control.value.trim() !== '';
 }
 
 function fillTextLike(field: RuntimePageField, value: string): FillOutcome {
   const control = firstControl(field);
-  if (!(control instanceof HTMLInputElement
-    || control instanceof HTMLTextAreaElement
-    || control instanceof HTMLSelectElement)) {
+  if (!control || !(isInputElement(control) || isTextareaElement(control) || isSelectElement(control))) {
     return failed(field.fieldId, 'control is unavailable');
   }
-  if (control instanceof HTMLInputElement && control.type.toLowerCase() === 'file') {
+  if (isInputElement(control) && control.type.toLowerCase() === 'file') {
     return failed(field.fieldId, 'file inputs are not supported');
   }
+  const normalized = normalizeValueForControl(control, value);
+  if (normalized.reason || normalized.value === undefined) return failed(field.fieldId, normalized.reason ?? 'invalid control value');
 
-  setNativeValue(control, value);
+  setNativeValue(control, normalized.value);
   dispatchInputAndChange(control);
   return { status: 'filled', fieldId: field.fieldId };
 }
 
 function fillSelect(field: RuntimePageField, value: string): FillOutcome {
   const control = firstControl(field);
-  if (!(control instanceof HTMLSelectElement)) return failed(field.fieldId, 'control is unavailable');
+  if (!isSelectElement(control)) return failed(field.fieldId, 'control is unavailable');
 
   const option = Array.from(control.options).find((candidate) => candidate.value === value)
     ?? Array.from(control.options).find((candidate) => normalizeLabel(candidate.text) === normalizeLabel(value));
@@ -67,7 +72,7 @@ function fillSelect(field: RuntimePageField, value: string): FillOutcome {
 }
 
 function fillRadio(field: RuntimePageField, value: string): FillOutcome {
-  const option = field.elements.find((element): element is HTMLInputElement => element instanceof HTMLInputElement
+  const option = field.elements.find((element): element is HTMLInputElement => isInputElement(element)
     && element.type.toLowerCase() === 'radio'
     && element.value === value);
   if (!option) return failed(field.fieldId, 'no matching option');
@@ -79,7 +84,7 @@ function fillRadio(field: RuntimePageField, value: string): FillOutcome {
 
 function fillCheckbox(field: RuntimePageField, value: FieldValue): FillOutcome {
   const control = firstControl(field);
-  if (!(control instanceof HTMLInputElement) || control.type.toLowerCase() !== 'checkbox') {
+  if (!isInputElement(control) || control.type.toLowerCase() !== 'checkbox') {
     return failed(field.fieldId, 'control is unavailable');
   }
   if (typeof value !== 'boolean') return failed(field.fieldId, 'checkbox requires a boolean value');
@@ -89,12 +94,22 @@ function fillCheckbox(field: RuntimePageField, value: FieldValue): FillOutcome {
   return { status: 'filled', fieldId: field.fieldId };
 }
 
+async function fillCombobox(field: RuntimePageField, value: string): Promise<FillOutcome> {
+  const control = firstControl(field);
+  if (!isInputElement(control)) return failed(field.fieldId, 'combobox input is unavailable');
+  const result = await selectComboboxOption(control, value);
+  return result.selected
+    ? { status: 'filled', fieldId: field.fieldId }
+    : failed(field.fieldId, result.reason ?? 'combobox selection failed');
+}
+
 export async function fillField(
   field: RuntimePageField,
   value: FieldValue,
   options: FillOptions,
 ): Promise<FillOutcome> {
   if (!options.confirmed) return failed(field.fieldId, 'fill requires explicit confirmation');
+  if (field.manualOnly) return failed(field.fieldId, 'control requires manual interaction');
   if (!options.overwrite && hasExistingValue(field)) {
     return { status: 'skipped_existing', fieldId: field.fieldId };
   }
@@ -104,5 +119,6 @@ export async function fillField(
   if (normalizedValue === undefined) return failed(field.fieldId, 'control requires a string or number value');
   if (field.kind === 'radio') return fillRadio(field, normalizedValue);
   if (field.kind === 'select') return fillSelect(field, normalizedValue);
+  if (field.kind === 'combobox') return fillCombobox(field, normalizedValue);
   return fillTextLike(field, normalizedValue);
 }

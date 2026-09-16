@@ -29,6 +29,9 @@ function resolveField(
   profile: Profile,
   options: ResolveMatchOptions,
 ): FieldMatch {
+  if (field.manualOnly) {
+    return { descriptor: field, candidates: [], status: 'unsupported' };
+  }
   const [mappedMatch] = matchFields([field], profile, options);
   const [genericMatch] = matchFields([field], profile, {
     mappings: [],
@@ -38,7 +41,7 @@ function resolveField(
   const adapterCandidates = toAdapterCandidates(field, profile, options.adapterHints ?? []);
   const candidates = [...userCandidates, ...adapterCandidates, ...genericMatch.candidates];
   const selected = candidates[0];
-  const policy = selected ? profile.fields[selected.profileKey].policy : 'auto';
+  const policy = selected ? profile.fields[selected.profileKey]?.policy ?? 'auto' : 'auto';
   const confidenceCandidates = selected?.source === 'adapter'
     ? adapterCandidates
     : selected ? [selected] : [];
@@ -47,9 +50,11 @@ function resolveField(
     descriptor: field,
     candidates,
     selected,
-    status: selected?.source === 'generic'
+    status: !selected
       ? genericMatch.status
-      : assignConfidenceStatus(confidenceCandidates, policy),
+      : selected.source === 'generic'
+        ? genericMatch.status
+        : assignConfidenceStatus(confidenceCandidates, policy),
   };
 }
 

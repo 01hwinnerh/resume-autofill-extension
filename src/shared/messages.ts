@@ -2,6 +2,7 @@ import type { FieldValue } from './profile';
 import type { ScanResult } from './form';
 import type { FillOutcome, VerificationOutcome } from '../filling/fill-types';
 import type { RuntimeError } from '../runtime/runtime-errors';
+import type { ScanTarget } from '../runtime/scan-session';
 
 export const MESSAGE_TYPES = ['scan-page', 'fill-fields', 'focus-field'] as const;
 
@@ -9,6 +10,8 @@ export interface ConfirmedFill {
   fieldId: string;
   profileKey: string;
   value: FieldValue;
+  /** Explicit retry may replace a value written by a previous failed attempt. */
+  overwrite?: boolean;
 }
 
 export type PageMessage =
@@ -17,13 +20,19 @@ export type PageMessage =
   | { type: 'focus-field'; requestId: string; fieldId: string };
 
 export type RuntimeCommand =
-  | { type: 'scan-active-tab' }
-  | { type: 'fill-confirmed-fields'; fields: ConfirmedFill[] }
-  | { type: 'focus-active-field'; fieldId: string };
+  | { type: 'scan-active-tab'; target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'> }
+  | { type: 'fill-confirmed-fields'; fields: ConfirmedFill[]; target?: ScanTarget }
+  | { type: 'focus-active-field'; fieldId: string; target?: ScanTarget };
 
 export interface PageScanResult {
   descriptors: import('./form').PageFieldDescriptor[];
   adapterId?: string;
+  metadata?: import('./form').ApplicationPageMetadata;
+}
+
+export interface PageFieldsChangedMessage {
+  type: 'page-fields-changed';
+  newFieldCount: number;
 }
 
 export interface PageFillResult {

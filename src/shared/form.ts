@@ -1,8 +1,11 @@
 import type { FieldValue } from './profile';
+import type { ScanTarget } from '../runtime/scan-session';
 
 export const FIELD_STATUSES = [
   'matched',
   'needs_confirmation',
+  'missing_profile',
+  'unrecognized',
   'skipped_existing',
   'filled',
   'verified',
@@ -18,6 +21,7 @@ export const PAGE_FIELD_KINDS = [
   'select',
   'radio',
   'checkbox',
+  'combobox',
 ] as const;
 
 export type PageFieldKind = (typeof PAGE_FIELD_KINDS)[number];
@@ -35,6 +39,12 @@ export interface PageFieldDescriptor {
   options: Array<{ label: string; value: string }>;
   currentValue: FieldValue;
   sectionLabel?: string;
+  /** Stable 0-based index of a repeated education/work/project container. */
+  sectionIndex?: number;
+  /** Controls that are discoverable but require a site-specific interaction instead of value assignment. */
+  manualOnly?: boolean;
+  /** Non-sensitive evidence describing where site-specific semantics came from. */
+  semanticSource?: string;
   framePath: number[];
   fingerprint: string;
 }
@@ -53,13 +63,23 @@ export interface FieldMatch {
   status: FieldStatus;
 }
 
+export interface ApplicationPageMetadata {
+  jobTitle?: string;
+  companyName?: string;
+  siteName?: string;
+  heading?: string;
+}
+
 export interface ScanPageInfo {
   url: string;
   host: string;
   title: string;
+  metadata?: ApplicationPageMetadata;
 }
 
 export interface ScanResult {
+  /** Present for live scans; optional for legacy persisted/test fixtures. */
+  target?: ScanTarget;
   page: ScanPageInfo;
   adapterId?: string;
   fields: FieldMatch[];

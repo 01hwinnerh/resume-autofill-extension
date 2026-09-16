@@ -13,7 +13,7 @@ export interface FieldMatchViewProps {
 }
 
 export const STATUS_LABELS: Record<FieldMatch['status'], string> = {
-  matched: '已匹配', needs_confirmation: '待确认', skipped_existing: '已有值',
+  matched: '已匹配', needs_confirmation: '待确认', missing_profile: '待补资料', unrecognized: '未识别', skipped_existing: '已有值',
   filled: '已填写', verified: '已校验', failed: '失败', unsupported: '手动处理',
 };
 
@@ -32,8 +32,21 @@ export function maskCandidateValue(value: unknown): string {
   return `${text.slice(0, 2)}****${text.slice(-2)}`;
 }
 
+export function fieldDisplayLabel(match: FieldMatch): string {
+  if (match.descriptor.label) return match.descriptor.label;
+  const type = match.descriptor.inputType === 'date' ? '日期'
+    : match.descriptor.inputType === 'number' ? '数字'
+      : match.descriptor.kind === 'select' ? '下拉'
+        : match.descriptor.kind === 'textarea' ? '长文本'
+          : match.descriptor.kind === 'radio' ? '单选'
+            : match.descriptor.kind === 'checkbox' ? '复选' : '文本';
+  const ordinal = match.descriptor.fieldId.match(/(\d+)$/)?.[1];
+  return `${type}字段${ordinal ? ` ${ordinal}` : ''}`;
+}
+
 export function FieldMatchView({ match, candidateValue, selected, onToggle, onLocate, disabled = false }: FieldMatchViewProps) {
   const [revealed, setRevealed] = useState(false);
+  const label = fieldDisplayLabel(match);
   const candidate = match.selected;
   const score = candidate ? `${Math.round(candidate.score * 100)}%` : '—';
   const current = stringifyFieldValue(match.descriptor.currentValue) || '空';
@@ -42,8 +55,8 @@ export function FieldMatchView({ match, candidateValue, selected, onToggle, onLo
   return (
     <article className={`field-match field-match-${match.status}`}>
       <label className="field-match-header">
-        <input aria-label={`选择${match.descriptor.label || '未命名字段'}`} type="checkbox" checked={selected} disabled={disabled} onChange={(event) => onToggle(match.descriptor.fieldId, event.target.checked)} />
-        <span className="field-match-title"><strong>{match.descriptor.label || '未命名字段'}</strong><small>{candidate?.profileKey ?? '未找到候选资料'}</small></span>
+        <input aria-label={`选择${label}`} type="checkbox" checked={selected} disabled={disabled} onChange={(event) => onToggle(match.descriptor.fieldId, event.target.checked)} />
+        <span className="field-match-title"><strong>{label}</strong><small>{candidate?.profileKey ?? '未找到候选资料'}</small></span>
         <span className={`status-badge status-${match.status}`}>{STATUS_LABELS[match.status]}</span>
       </label>
       <div className="value-transition"><span><small>页面当前值</small>{current}</span><b aria-hidden="true">→</b><span><small>将填写值</small>{next}</span></div>

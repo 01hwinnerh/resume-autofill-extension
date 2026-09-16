@@ -1,4 +1,4 @@
-import type { RuntimePageField } from '../form-engine/runtime-types';
+import type { PageFieldDescriptor } from '../shared/form';
 import type { AdapterHint, PageContext, SiteAdapter } from './adapter-types';
 
 export class GenericAdapter implements SiteAdapter {
@@ -8,7 +8,7 @@ export class GenericAdapter implements SiteAdapter {
     return true;
   }
 
-  discoverHints(_fields: RuntimePageField[]): AdapterHint[] {
+  discoverHints(_fields: PageFieldDescriptor[]): AdapterHint[] {
     return [];
   }
 }

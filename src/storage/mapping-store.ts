@@ -62,6 +62,23 @@ export class MappingStore {
     return this.update(() => normalized);
   }
 
+  async updateMapping(id: string, mapping: UserFieldMapping): Promise<void> {
+    const normalized = { ...mapping, scope: normalizeMappingScope(mapping.scope) };
+    return this.update((mappings) => {
+      const collision = mappings.some((candidate) => candidate.id === normalized.id && candidate.id !== id);
+      if (collision) throw new Error('该字段映射已存在。');
+      const remaining = mappings.filter((candidate) => candidate.id !== id);
+      const index = mappings.findIndex((candidate) => candidate.id === id);
+      remaining.splice(index < 0 ? remaining.length : Math.min(index, remaining.length), 0, normalized);
+      return remaining;
+    });
+  }
+
+  async deleteMany(ids: string[]): Promise<void> {
+    const selected = new Set(ids);
+    return this.update((mappings) => mappings.filter((mapping) => !selected.has(mapping.id)));
+  }
+
   async delete(id: string): Promise<void> {
     return this.update((mappings) => mappings.filter((mapping) => mapping.id !== id));
   }

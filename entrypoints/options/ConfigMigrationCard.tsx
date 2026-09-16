@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react';
 import { createPortableConfig, importPortableConfig, parsePortableConfig, summarizePortableConfig, type PortableConfigV1 } from '../../src/config/portable-config';
 import type { ProfileStore } from '../../src/profile/profile-store';
+import { normalizeMappingScope } from '../../src/shared/mapping';
 import type { Profile } from '../../src/shared/profile';
 import type { MappingStore } from '../../src/storage/mapping-store';
+import { orphanedMappings } from '../../src/ui/mapping-management';
 import { downloadPortableConfig, readPortableConfigFile } from '../../src/ui/portable-config-file';
 
 export function ConfigMigrationCard({ profile, profileStore, mappingStore, onImported }: {
@@ -57,10 +59,11 @@ export function ConfigMigrationCard({ profile, profileStore, mappingStore, onImp
     try {
       await importPortableConfig(pending, profileStore, mappingStore);
       const importedSummary = summarizePortableConfig(pending);
+      const orphanedCount = orphanedMappings(pending.mappings.map((mapping) => ({ ...mapping, scope: normalizeMappingScope(mapping.scope) })), pending.profile).length;
       onImported(pending.profile);
       setPending(undefined);
       setFilename('');
-      setMessage(`导入成功：${importedSummary.profileFieldCount} 个资料字段、${importedSummary.customFieldCount} 个自定义字段、${importedSummary.mappingCount} 条字段映射。`);
+      setMessage(`导入成功：${importedSummary.profileFieldCount} 个资料字段、${importedSummary.customFieldCount} 个自定义字段、${importedSummary.mappingCount} 条字段映射。${orphanedCount ? `其中 ${orphanedCount} 条映射已失效，请在字段映射管理中处理。` : ''}`);
     } catch (error) {
       setMessage(`导入失败，原配置已保留：${error instanceof Error ? error.message : '未知错误'}`);
     } finally {

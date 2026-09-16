@@ -71,6 +71,19 @@ describe('ConfigMigrationCard', () => {
     expect(screen.getByText(/导入成功：2 个资料字段、1 个自定义字段、1 条字段映射/)).toBeTruthy();
   });
 
+  it('reports orphaned mappings after a successful import', async () => {
+    const orphanedMappings: UserFieldMapping[] = [{ ...importedMappings[0], id: 'orphaned', profileKey: 'custom.deleted' }];
+    renderCard({ schemaVersion: 1, fields: {} });
+    const json = stringifyPortableConfig(createPortableConfig(importedProfile, orphanedMappings, '2026-09-16T08:21:00.000Z'));
+    const file = { name: 'with-orphan.json', size: json.length, text: async () => json } as File;
+
+    fireEvent.change(screen.getByRole('region', { name: '配置迁移' }).querySelector('input[type="file"]')!, { target: { files: [file] } });
+    await screen.findByText('准备导入：with-orphan.json');
+    fireEvent.click(screen.getByRole('button', { name: '确认替换并导入' }));
+
+    expect(await screen.findByText(/其中 1 条映射已失效，请在字段映射管理中处理/)).toBeTruthy();
+  });
+
   it('rejects an invalid file without showing the confirmation action', async () => {
     renderCard({ schemaVersion: 1, fields: {} });
     const file = { name: 'broken.json', size: 1, text: async () => '{' } as File;

@@ -122,3 +122,100 @@ test('all-features ATS exposes every compatibility path and recognizes fields wi
   expect(scan.result.descriptors.some((field) => field.label === '期望城市')).toBe(true);
   expect(scan.result.descriptors.some((field) => field.label === '专业技能')).toBe(true);
 });
+
+
+test('Greenhouse-style ATS supports bracketed names, education dates, native selects, and manual upload boundaries', async ({ page }) => {
+  await page.goto('/greenhouse-ats.html');
+  const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-greenhouse-ats' });
+  const fields = scan.result.descriptors;
+  const firstName = fields.find((field) => field.label === 'first name')!;
+  const email = fields.find((field) => field.label === 'email')!;
+  const school = fields.find((field) => field.label === 'school')!;
+  const degree = fields.find((field) => field.label === 'degree')!;
+  const start = fields.find((field) => field.label === 'start date')!;
+  const end = fields.find((field) => field.label === 'end date')!;
+
+  expect(fields).toHaveLength(11);
+  expect(school).toMatchObject({ sectionLabel: 'education', sectionIndex: 0 });
+  expect(degree.kind).toBe('select');
+  expect(fields.some((field) => field.name === 'job_application[resume]')).toBe(false);
+
+  const fill = await runRuntimeMessage(page, {
+    type: 'fill-fields', requestId: 'fill-greenhouse-ats', fields: [
+      { fieldId: firstName.fieldId, profileKey: 'identity.firstName', value: '测试' },
+      { fieldId: email.fieldId, profileKey: 'contact.email', value: 'greenhouse@example.com' },
+      { fieldId: school.fieldId, profileKey: 'educations.0.school', value: '示例大学' },
+      { fieldId: degree.fieldId, profileKey: 'educations.0.degree', value: 'Master' },
+      { fieldId: start.fieldId, profileKey: 'educations.0.startDate', value: '2021-09-01' },
+      { fieldId: end.fieldId, profileKey: 'educations.0.endDate', value: '2025/06/30' },
+    ],
+  });
+  expect(fill.results.every((result) => result.outcome.status === 'filled' && result.verification?.verified)).toBe(true);
+  await expect(page.locator('#gh-first-name')).toHaveValue('测试');
+  await expect(page.locator('#gh-degree')).toHaveValue('Master');
+  await expect(page.locator('#gh-start')).toHaveValue('2021-09');
+  await expect(page.locator('#gh-end')).toHaveValue('2025-06');
+  await expect(page.locator('#submit-state')).toHaveText('尚未提交');
+});
+
+test('Lever-style ATS recognizes SPA question wrappers and work-experience context', async ({ page }) => {
+  await page.goto('/lever-ats.html');
+  const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-lever-ats' });
+  const fields = scan.result.descriptors;
+  const name = fields.find((field) => field.label === 'full name')!;
+  const location = fields.find((field) => field.label === 'current location')!;
+  const company = fields.find((field) => field.label === 'company')!;
+  const title = fields.find((field) => field.label === 'job title')!;
+  const description = fields.find((field) => field.label === 'description')!;
+
+  expect(fields).toHaveLength(10);
+  expect(company).toMatchObject({ sectionLabel: 'work experience', sectionIndex: 0 });
+  expect(title).toMatchObject({ sectionLabel: 'work experience', sectionIndex: 0 });
+  expect(fields.some((field) => field.name === 'resume')).toBe(false);
+
+  const fill = await runRuntimeMessage(page, {
+    type: 'fill-fields', requestId: 'fill-lever-ats', fields: [
+      { fieldId: name.fieldId, profileKey: 'identity.name', value: '测试用户' },
+      { fieldId: location.fieldId, profileKey: 'location.current', value: 'Shanghai' },
+      { fieldId: company.fieldId, profileKey: 'workExperiences.0.company', value: '示例公司' },
+      { fieldId: title.fieldId, profileKey: 'workExperiences.0.title', value: 'Frontend Engineer' },
+      { fieldId: description.fieldId, profileKey: 'workExperiences.0.description', value: 'Built accessible web applications.' },
+    ],
+  });
+  expect(fill.results.every((result) => result.outcome.status === 'filled' && result.verification?.verified)).toBe(true);
+  await expect(page.locator('#lever-location')).toHaveValue('Shanghai');
+  await expect(page.locator('#lever-company')).toHaveValue('示例公司');
+  await expect(page.locator('#submit-state')).toHaveText('尚未提交');
+});
+
+test('Workday-style ATS resolves aria-labelled groups and safely selects an exact prompt option', async ({ page }) => {
+  await page.goto('/workday-ats.html');
+  const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-workday-ats' });
+  const fields = scan.result.descriptors;
+  const firstName = fields.find((field) => field.label === 'first name')!;
+  const school = fields.find((field) => field.label === 'school')!;
+  const degree = fields.find((field) => field.label === 'degree')!;
+  const start = fields.find((field) => field.label === 'start date')!;
+  const end = fields.find((field) => field.label === 'end date')!;
+
+  expect(fields).toHaveLength(9);
+  expect(firstName.sectionLabel).toBe('personal information');
+  expect(school).toMatchObject({ sectionLabel: 'education', sectionIndex: 0 });
+  expect(degree).toMatchObject({ kind: 'combobox', sectionLabel: 'education', sectionIndex: 0 });
+  expect(fields.some((field) => field.htmlId === 'wd-resume')).toBe(false);
+
+  const fill = await runRuntimeMessage(page, {
+    type: 'fill-fields', requestId: 'fill-workday-ats', fields: [
+      { fieldId: firstName.fieldId, profileKey: 'identity.firstName', value: '测试' },
+      { fieldId: school.fieldId, profileKey: 'educations.0.school', value: '示例大学' },
+      { fieldId: degree.fieldId, profileKey: 'educations.0.degree', value: 'Master' },
+      { fieldId: start.fieldId, profileKey: 'educations.0.startDate', value: '2020-09-01' },
+      { fieldId: end.fieldId, profileKey: 'educations.0.endDate', value: '2024-06-30' },
+    ],
+  });
+  expect(fill.results.every((result) => result.outcome.status === 'filled' && result.verification?.verified)).toBe(true);
+  await expect(page.locator('#wd-degree')).toHaveAttribute('aria-valuetext', 'Master');
+  await expect(page.locator('#wd-start')).toHaveValue('2020-09');
+  await expect(page.locator('#wd-end')).toHaveValue('2024-06');
+  await expect(page.locator('#submit-state')).toHaveText('尚未提交');
+});

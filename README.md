@@ -107,6 +107,9 @@ npm run fixtures:serve -- --port 4173
 
 该页面集中覆盖标准控件、Formily、Combobox、日期与月份转换、动态字段、同源 iframe、投递信息识别和手动提交边界。其他独立 fixture 仍可用于定位单项兼容性问题：
 
+- `http://127.0.0.1:4173/greenhouse-ats.html`：Greenhouse 风格的括号字段名、教育经历和原生下拉。
+- `http://127.0.0.1:4173/lever-ats.html`：Lever 风格的 SPA 问题容器和工作经历。
+- `http://127.0.0.1:4173/workday-ats.html`：Workday 风格的 ARIA 分组、automation id 和自定义 Combobox。
 - `http://127.0.0.1:4173/basic-form.html`
 - `http://127.0.0.1:4173/comprehensive-form.html`
 - `http://127.0.0.1:4173/controlled-form.html`

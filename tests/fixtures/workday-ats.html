@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Workday-style ATS compatibility fixture</title>
+  <style>
+    body{margin:0;background:#f3f7fb;color:#24364b;font:15px/1.5 system-ui,sans-serif}.wd-shell{max-width:820px;margin:28px auto;padding:30px;background:#fff;border-radius:18px;box-shadow:0 14px 42px #244a7216}.wd-group{margin:24px 0;padding:20px;border:1px solid #d6e2ee;border-radius:12px}.wd-field{margin:14px 0}.wd-field>span,.wd-field>label{display:block;margin-bottom:6px;font-weight:700}input,textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #aebed1;border-radius:8px;font:inherit}[role=listbox]{margin-top:4px;padding:5px;border:1px solid #b8c8d9;border-radius:8px;background:#fff}[role=option]{padding:8px;border-radius:6px;cursor:pointer}[role=option]:hover{background:#eaf3ff}button{padding:10px 16px;border:0;border-radius:8px;background:#1769aa;color:#fff}output{margin-left:14px}.hint{color:#708198}
+  </style>
+</head>
+<body>
+  <main class="wd-shell" data-automation-id="jobApplicationPage">
+    <h1>Workday-style application</h1>
+    <p class="hint">Exercises aria-labelledby groups, automation IDs, repeated education context and a custom combobox.</p>
+    <form id="application-form">
+      <div class="wd-group" role="group" aria-labelledby="wd-personal-heading" data-automation-id="personalInformationSection">
+        <h2 id="wd-personal-heading">Personal Information</h2>
+        <div class="wd-field"><span id="wd-first-label">First Name</span><input id="wd-first" name="legalNameSection_firstName" aria-labelledby="wd-first-label" data-automation-id="firstName" autocomplete="given-name" /></div>
+        <div class="wd-field"><span id="wd-last-label">Last Name</span><input id="wd-last" name="legalNameSection_lastName" aria-labelledby="wd-last-label" data-automation-id="lastName" autocomplete="family-name" /></div>
+        <div class="wd-field"><span id="wd-email-label">Email Address</span><input id="wd-email" name="email" aria-labelledby="wd-email-label" data-automation-id="email" type="email" autocomplete="email" /></div>
+        <div class="wd-field"><span id="wd-phone-label">Phone Number</span><input id="wd-phone" name="phone" aria-labelledby="wd-phone-label" data-automation-id="phone-number" type="tel" autocomplete="tel" /></div>
+      </div>
+      <div class="wd-group education-history" role="group" aria-labelledby="wd-education-heading" data-automation-id="educationSection">
+        <h2 id="wd-education-heading">Education</h2>
+        <div class="wd-field"><span id="wd-school-label">School</span><input id="wd-school" name="education-0-school" aria-labelledby="wd-school-label" data-automation-id="school" /></div>
+        <div class="wd-field"><span id="wd-major-label">Field of Study</span><input id="wd-major" name="education-0-field-of-study" aria-labelledby="wd-major-label" data-automation-id="field-of-study" /></div>
+        <div class="wd-field" data-form-field-name="degree"><span id="wd-degree-label">Degree</span><input id="wd-degree" name="education-0-degree" role="combobox" aria-labelledby="wd-degree-label" aria-controls="wd-degree-options" aria-expanded="false" autocomplete="off" /><div id="wd-degree-options" role="listbox" hidden><div role="option" data-automation-id="promptOption" data-value="Bachelor">Bachelor</div><div role="option" data-automation-id="promptOption" data-value="Master">Master</div></div></div>
+        <div class="wd-field"><span id="wd-start-label">Start Date</span><input id="wd-start" name="education-0-start" aria-labelledby="wd-start-label" type="month" /></div>
+        <div class="wd-field"><span id="wd-end-label">End Date</span><input id="wd-end" name="education-0-end" aria-labelledby="wd-end-label" type="month" /></div>
+      </div>
+      <div class="wd-field"><label for="wd-resume">Resume</label><input id="wd-resume" data-automation-id="resumeUpload" type="file" /></div>
+      <button type="submit" data-automation-id="bottom-navigation-next-button">Submit</button><output id="submit-state">尚未提交</output>
+    </form>
+  </main>
+  <script>
+    const degree=document.querySelector('#wd-degree');const list=document.querySelector('#wd-degree-options');
+    degree.addEventListener('click',()=>{list.hidden=false;degree.setAttribute('aria-expanded','true')});
+    list.addEventListener('click',event=>{const option=event.target.closest('[role=option]');if(!option)return;degree.value=option.dataset.value;degree.setAttribute('aria-valuetext',option.dataset.value);degree.setAttribute('aria-expanded','false');option.setAttribute('aria-selected','true');list.hidden=true;degree.dispatchEvent(new Event('change',{bubbles:true}))});
+    document.querySelector('form').addEventListener('submit',event=>{event.preventDefault();document.querySelector('#submit-state').textContent='检测到手动提交'});
+  </script>
+</body>
+</html>

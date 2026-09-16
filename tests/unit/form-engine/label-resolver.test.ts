@@ -13,12 +13,14 @@ describe('label resolver', () => {
       <input id="placeholder" placeholder="  Personal   Site " />
       <input id="fallback-id" name="Preferred_Name" />
       <input id="only-id" />
+      <label for="degree">Degree<select id="degree"><option>Select</option><option>Master</option></select></label>
     `;
 
     expect(resolveLabel(document.querySelector('#name')!)).toBe('full name');
     expect(resolveLabel(document.querySelector('#placeholder')!)).toBe('personal site');
     expect(resolveLabel(document.querySelector('#fallback-id')!)).toBe('preferred_name');
     expect(resolveLabel(document.querySelector('#only-id')!)).toBe('only-id');
+    expect(resolveLabel(document.querySelector('#degree')!)).toBe('degree');
   });
 
   it('resolves aria-labelledby and component-library form labels', () => {
@@ -67,6 +69,7 @@ describe('label resolver', () => {
     document.body.innerHTML = `
       <fieldset><legend>  基本   信息 </legend><input id="legend-field" /></fieldset>
       <div role="group" title=" Contact   Details "><input id="group-field" /></div>
+      <div role="group" aria-labelledby="aria-section-title"><h2 id="aria-section-title"> Education   History </h2><input id="aria-group-field" /></div>
       <section><h2>  Work   History </h2><input id="section-field" /></section>
       <div>Unrelated parent copy <input id="plain-field" /></div>
       <div class="education-section"><div><h3>教育经历</h3></div><div class="semi-form-field"><input id="component-section-field" /></div></div>
@@ -74,6 +77,7 @@ describe('label resolver', () => {
 
     expect(resolveSectionLabel(document.querySelector('#legend-field')!)).toBe('基本 信息');
     expect(resolveSectionLabel(document.querySelector('#group-field')!)).toBe('contact details');
+    expect(resolveSectionLabel(document.querySelector('#aria-group-field')!)).toBe('education history');
     expect(resolveSectionLabel(document.querySelector('#section-field')!)).toBe('work history');
     expect(resolveSectionLabel(document.querySelector('#plain-field')!)).toBeUndefined();
     expect(resolveSectionLabel(document.querySelector('#component-section-field')!)).toBe('教育经历');

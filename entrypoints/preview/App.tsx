@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { browser } from 'wxt/browser';
 import type { PreviewSession, ProfilePreviewSection } from '../../src/preview/preview-session';
 import { previewStorageKey } from '../../src/preview/preview-session';
-import type { RuntimeCommandResponse } from '../../src/shared/messages';
+import type { ConfirmedFill, RuntimeCommandResponse } from '../../src/shared/messages';
 
 function mask(value: string): string {
   if (!value) return '空';
@@ -35,6 +35,7 @@ export default function App() {
   const [reveal, setReveal] = useState(false);
   const [message, setMessage] = useState('');
   const [fillCompleted, setFillCompleted] = useState(false);
+  const [failures, setFailures] = useState<Array<{ fieldId: string; reason: string }>>([]);
   const id = new URLSearchParams(location.search).get('id');
 
   useEffect(() => {
@@ -60,15 +61,34 @@ export default function App() {
     if (session.target.windowId !== undefined) await browser.windows.update(session.target.windowId, { focused: true });
   }
 
-  async function confirmFill() {
-    if (session?.kind !== 'fill' || !session.target || session.fields.length === 0) return;
+  async function runFill(fields: ConfirmedFill[]) {
+    if (session?.kind !== 'fill' || !session.target || fields.length === 0) return;
     setMessage('正在写入目标页面…');
-    const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields: session.fields, target: session.target }) as RuntimeCommandResponse;
+    setFailures([]);
+    const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target: session.target }) as RuntimeCommandResponse;
     if (!response.ok) { setMessage(`填写失败：${response.error.message}`); return; }
-    const summary = response.data as { verified: string[]; skippedExisting: string[]; failed: unknown[] };
+    const summary = response.data as { verified: string[]; skippedExisting: string[]; failed: Array<{ fieldId: string; reason: string }> };
     setFillCompleted(true);
-    setMessage(`已写入招聘页：${summary.verified.length} 项已校验，${summary.skippedExisting.length} 项保留已有值，${summary.failed.length} 项失败。正在返回招聘页，请检查并手动提交。`);
+    setFailures(summary.failed);
+    if (summary.failed.length > 0) {
+      setMessage(`${summary.verified.length} 项成功，${summary.failed.length} 项需要处理。`);
+      return;
+    }
+    setMessage(`已写入招聘页：${summary.verified.length} 项成功${summary.skippedExisting.length ? `，${summary.skippedExisting.length} 项保留原值` : ''}。`);
     await returnToTarget();
+  }
+
+  async function locateFailure(fieldId: string) {
+    if (session?.kind !== 'fill' || !session.target) return;
+    await returnToTarget();
+    const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId, target: session.target }) as RuntimeCommandResponse;
+    if (!response.ok || !('focused' in response.data) || !response.data.focused) setMessage(response.ok ? '未找到页面字段，请重新扫描' : response.error.message);
+  }
+
+  function retryFailures() {
+    if (session?.kind !== 'fill') return;
+    const failedIds = new Set(failures.map((failure) => failure.fieldId));
+    void runFill(session.fields.filter((field) => failedIds.has(field.fieldId)).map((field) => ({ ...field, overwrite: true })));
   }
 
   if (loading) return <main className="preview-shell"><div className="empty-state"><span className="spinner" />正在准备预览…</div></main>;
@@ -90,6 +110,12 @@ export default function App() {
       </div>}
     </>}
 
-    {session.kind === 'fill' && session.items.length > 0 && <footer className="action-bar"><div><strong>{fillCompleted ? '已写入招聘页面' : `即将填写 ${session.items.length} 项`}</strong><span>{message || '不会自动提交申请；投递完成后请在侧边栏主动记录'}</span></div><button className="primary" onClick={() => void (fillCompleted ? returnToTarget() : confirmFill())}>{fillCompleted ? '返回招聘页检查' : '确认填写'}</button></footer>}
+    {session.kind === 'fill' && failures.length > 0 && <section className="preview-failures">
+      <header><h2>需要处理的字段</h2><span>{failures.length} 项</span></header>
+      {failures.map((failure) => <div className="preview-failure-item" key={failure.fieldId}><span><strong>{session.items.find((item) => item.fieldId === failure.fieldId)?.label ?? '未知字段'}</strong><small>{failure.reason}</small></span><button className="secondary" onClick={() => void locateFailure(failure.fieldId)}>定位</button></div>)}
+      <button className="primary retry-failures" onClick={retryFailures}>仅重试失败项</button>
+    </section>}
+
+    {session.kind === 'fill' && session.items.length > 0 && <footer className="action-bar"><div><strong>{fillCompleted ? failures.length ? '部分字段需要处理' : '已写入招聘页面' : `即将填写 ${session.items.length} 项`}</strong><span>{message || '不会自动提交申请；投递完成后请在侧边栏主动记录'}</span></div><button className="primary" onClick={() => void (fillCompleted ? returnToTarget() : runFill(session.fields))}>{fillCompleted ? '返回招聘页检查' : '确认填写'}</button></footer>}
   </main>;
 }

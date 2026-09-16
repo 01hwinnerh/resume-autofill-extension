@@ -94,3 +94,26 @@ test('reports one failed field without discarding successful fields', async ({ p
   expect(response.results.find((result) => result.fieldId === 'missing-field')?.outcome.status).toBe('failed');
   await expect(page.locator('#email')).toHaveValue('partial@example.test');
 });
+
+
+test('explicit retry can overwrite a value left by a failed attempt', async ({ page }) => {
+  await page.goto('/basic-form.html');
+  const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-retry-overwrite' });
+  const email = scan.result.descriptors.find((field) => field.label === '邮箱')!;
+  await page.locator('#email').fill('stale@example.test');
+
+  const first = await runRuntimeMessage(page, {
+    type: 'fill-fields', requestId: 'fill-no-overwrite',
+    fields: [{ fieldId: email.fieldId, profileKey: 'contact.email', value: 'fresh@example.test' }],
+  });
+  expect(first.results[0].outcome.status).toBe('skipped_existing');
+  await expect(page.locator('#email')).toHaveValue('stale@example.test');
+
+  const retry = await runRuntimeMessage(page, {
+    type: 'fill-fields', requestId: 'fill-explicit-retry',
+    fields: [{ fieldId: email.fieldId, profileKey: 'contact.email', value: 'fresh@example.test', overwrite: true }],
+  });
+  expect(retry.results[0].outcome.status).toBe('filled');
+  expect(retry.results[0].verification?.verified).toBe(true);
+  await expect(page.locator('#email')).toHaveValue('fresh@example.test');
+});

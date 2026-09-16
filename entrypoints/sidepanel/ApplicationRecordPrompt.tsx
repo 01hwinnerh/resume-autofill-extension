@@ -25,7 +25,7 @@ export function ApplicationRecordPrompt({ draft, onRecord, onOpenManager }: {
     try {
       await onRecord({ ...draft, company, role });
       setSaved(true);
-      setMessage('已记录为“已投递”，并写入当前时间。');
+      setMessage('记录成功');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '记录失败，请重试');
     } finally {

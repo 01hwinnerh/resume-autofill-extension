@@ -10,6 +10,8 @@ export interface ConfirmedFill {
   fieldId: string;
   profileKey: string;
   value: FieldValue;
+  /** Explicit retry may replace a value written by a previous failed attempt. */
+  overwrite?: boolean;
 }
 
 export type PageMessage =

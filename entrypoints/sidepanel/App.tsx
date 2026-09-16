@@ -17,6 +17,7 @@ import { parseFieldValue, profileCompletion } from '../../src/ui/profile-managem
 import { reducePanel } from '../../src/ui/panel-state';
 import { ApplicationRecordPrompt, type ApplicationDraft } from './ApplicationRecordPrompt';
 import { CustomFieldsManager } from './CustomFieldsManager';
+import { FillResultPanel } from './FillResultPanel';
 import { QuickProfileEditor } from './QuickProfileEditor';
 import { ReviewPanel } from './ReviewPanel';
 
@@ -55,7 +56,8 @@ export default function App() {
   const [lastApplication, setLastApplication] = useState<ApplicationDraft>();
   const [manualApplication, setManualApplication] = useState<ApplicationDraft>();
   const completion = profileCompletion(profile);
-  const activeTarget = state.kind === 'review' ? state.result.target : undefined;
+  const scanResult = state.kind === 'review' || state.kind === 'filling' || state.kind === 'result' ? state.result : undefined;
+  const activeTarget = scanResult?.target;
 
   useEffect(() => {
     void Promise.all([profileStore.load(), mappingStore.list()]).then(([loadedProfile, loadedMappings]) => {
@@ -76,7 +78,7 @@ export default function App() {
       if (info.tabId === activeTarget.tabId) return;
       void browser.tabs.get(info.tabId).then((tab) => {
         if (tab.url?.startsWith(extensionUrl(''))) return;
-        invalidate('当前页面已切换，原扫描结果已失效，请扫描新页面。');
+        invalidate('页面已切换，请重新扫描');
       });
     };
     const onUpdated = (tabId: number, change: { url?: string }) => {
@@ -165,16 +167,16 @@ export default function App() {
   }
 
   async function locate(fieldId: string) {
-    if (state.kind !== 'review' || !state.result.target) return;
-    const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId, target: state.result.target }) as RuntimeCommandResponse;
+    if (!scanResult?.target) return;
+    const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId, target: scanResult.target }) as RuntimeCommandResponse;
     if (!response.ok || !('focused' in response.data) || !response.data.focused) setNotice(response.ok ? '未找到页面字段，请重新扫描' : response.error.message);
   }
 
   async function fill(fields: ConfirmedFill[]) {
-    if (state.kind !== 'review' || !fields.length || !state.result.target) return;
-    const target = state.result.target;
-    const draft = applicationDraft(state.result.page.title, state.result.page.url);
-    dispatch({ type: 'fill_requested', fieldIds: fields.map((item) => item.fieldId) });
+    if (!scanResult?.target || !fields.length || (state.kind !== 'review' && state.kind !== 'result')) return;
+    const target = scanResult.target;
+    const draft = applicationDraft(scanResult.page.title, scanResult.page.url);
+    dispatch({ type: 'fill_requested', fields });
     try {
       const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target }) as RuntimeCommandResponse;
       if (!response.ok || !('filled' in response.data)) throw new Error(response.ok ? '填写结果格式错误' : response.error.message);
@@ -224,20 +226,20 @@ export default function App() {
   }
 
   return <main className="sidepanel-page">
-    <header className="app-header"><div className="brand-mark">简</div><div><h1>简历填写助手</h1><p>本地资料，确认后填写，永不自动提交</p></div></header>
+    <header className="app-header"><div className="brand-mark">简</div><div><h1>简历填写助手</h1><p>本地存储 · 确认填写 · 绝不自动提交</p></div></header>
     <nav className="primary-nav" aria-label="主要导航"><button className={view === 'assistant' ? 'active' : ''} onClick={() => setView('assistant')}>填写助手</button><button className={view === 'profile' ? 'active' : ''} onClick={() => setView('profile')}>我的资料</button><button className={view === 'custom' ? 'active' : ''} onClick={() => setView('custom')}>自定义字段</button><button onClick={() => void openApplications()}>投递记录</button></nav>
     {notice && <p className="notice" role="alert">{notice}</p>}
     {view === 'profile' && <QuickProfileEditor profile={profile} onSave={saveProfile} onOpenFull={() => void openFullProfile()} onPreview={() => void openProfilePreview()} />}
     {view === 'custom' && <CustomFieldsManager profile={profile} mappings={mappings} onSave={saveCustomField} onDelete={deleteCustomField} onUpdateMapping={updateMappingScope} onDeleteMapping={deleteMapping} />}
     {view === 'assistant' && <>
       {state.kind === 'idle' && <section className="assistant-empty card"><div className="completion-ring" aria-label={`资料完成度 ${completion.percent}%`}>{completion.percent}%</div><div><h2>{completion.filled ? '继续完善资料并扫描页面' : '先完善基础资料'}</h2><p>{completion.filled ? `已填写 ${completion.filled}/${completion.total} 项资料` : '填写姓名、手机和邮箱后，匹配会更准确。'}</p></div><div className="completion-groups"><span>基本信息 {completion.bySection.basic.filled}/{completion.bySection.basic.total}</span><span>教育 {completion.bySection.education.filled}/{completion.bySection.education.total}</span><span>工作 {completion.bySection.work.filled}/{completion.bySection.work.total}</span></div>{!completion.filled && <button className="secondary-button" type="button" onClick={() => setView('profile')}>完善基础资料</button>}</section>}
-      <section className="scan-card card"><div><strong>{state.kind === 'review' ? state.result.page.title || state.result.page.host : '扫描当前招聘页面'}</strong><span>{state.kind === 'review' ? state.result.page.url : '只会扫描点击按钮时当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : state.kind === 'review' ? '重新扫描' : '扫描当前页面'}</button></section>
+      <section className="scan-card card"><div><strong>{scanResult ? scanResult.page.title || scanResult.page.host : '扫描当前招聘页面'}</strong><span>{scanResult ? scanResult.page.url : '仅扫描当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : scanResult ? '重新扫描' : '扫描当前页面'}</button></section>
       <section className="manual-application-card card"><strong>已经完成投递？</strong><button type="button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
       {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
       {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} />}
-      {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.selectedFieldIds.length} 个字段…</div>}
+      {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.fields.length} 个字段…</div>}
       {state.kind === 'result' && <>
-        <section className="result-panel card" role="status"><h2>本次填写完成</h2><p><strong>{state.summary.verified.length}</strong> 项已校验，<strong>{state.summary.skippedExisting.length}</strong> 项因已有值跳过，<strong>{state.summary.failed.length}</strong> 项失败。</p><button type="button" onClick={() => void scan()}>重新扫描页面</button></section>
+        <FillResultPanel result={state.result} fields={state.fields} summary={state.summary} onRetry={(fields) => void fill(fields)} onLocate={(fieldId) => void locate(fieldId)} onRescan={() => void scan()} />
         {lastApplication && <ApplicationRecordPrompt draft={lastApplication} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
       </>}
     </>}

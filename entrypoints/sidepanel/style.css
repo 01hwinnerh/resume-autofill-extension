@@ -117,3 +117,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .manual-application-card strong { flex:1; color:#293956; font-size:13px; }
 .manual-application-card button { flex:none; min-height:36px; padding:0 12px; font-size:11px; }
 @media (max-width:390px) { .manual-application-card { align-items:stretch; flex-direction:column; } .manual-application-card button { width:100%; } }
+
+.result-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; text-align:left; }
+.result-heading h2 { margin:0; font-size:15px; }
+.result-heading p { margin:2px 0 0; color:#6d7890; font-size:11px; }
+.result-panel .secondary-button { min-height:32px; border:1px solid #d8e2ef; color:#405470; background:#fff; box-shadow:none; }
+.failed-field-list { display:grid; gap:7px; margin-top:12px; text-align:left; }
+.failed-field-item { display:flex; align-items:center; gap:8px; padding:9px; border:1px solid #f1cccc; border-radius:9px; background:#fff7f7; }
+.failed-field-item > span { display:grid; flex:1; min-width:0; }
+.failed-field-item strong { color:#7f1d1d; font-size:12px; }
+.failed-field-item small { overflow-wrap:anywhere; color:#a14b4b; font-size:10px; }
+.failed-field-list > button { width:100%; margin-top:2px; }

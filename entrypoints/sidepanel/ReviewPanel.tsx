@@ -146,6 +146,6 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
       })}</div>}
     </section>)}</div>
     {message && <p className="notice" role="status">{message}</p>}
-    <div className="sticky-action-bar"><div><strong>已选择 {confirmed.length} 项</strong><span>{mustPreview ? '包含需确认内容，请先查看大屏预览' : '均为可快速填写字段'}</span></div><div className="sticky-buttons"><button type="button" className="secondary-button" disabled={confirmed.length === 0} onClick={() => void openPreview()}>完整预览</button><button type="button" className="primary-button" disabled={confirmed.length === 0} onClick={() => mustPreview ? void openPreview() : onFill(confirmed)}>{mustPreview ? `预览并确认 ${confirmed.length} 项` : `快速填写 ${confirmed.length} 项`}</button></div></div>
+    <div className="sticky-action-bar"><div><strong>已选择 {confirmed.length} 项</strong><span>{mustPreview ? '有待确认项，请先预览' : '可直接填写'}</span></div><div className="sticky-buttons"><button type="button" className="secondary-button" disabled={confirmed.length === 0} onClick={() => void openPreview()}>完整预览</button><button type="button" className="primary-button" disabled={confirmed.length === 0} onClick={() => mustPreview ? void openPreview() : onFill(confirmed)}>{mustPreview ? `预览并确认 ${confirmed.length} 项` : `快速填写 ${confirmed.length} 项`}</button></div></div>
   </>;
 }

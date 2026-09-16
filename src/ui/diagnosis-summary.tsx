@@ -68,7 +68,7 @@ export function DiagnosisSummary({ result }: { result: ScanResult }) {
 
   return <details className="diagnosis-card card">
     <summary>
-      <span><strong>兼容性诊断</strong><small>仅复制结构与计数，不包含任何填写值</small></span>
+      <span><strong>兼容性诊断</strong><small>仅结构与计数，不含填写值</small></span>
       <b>{recognized}/{summary.totalFields}</b>
     </summary>
     <div className="diagnosis-content">

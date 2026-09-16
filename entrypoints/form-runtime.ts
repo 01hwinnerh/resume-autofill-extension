@@ -103,7 +103,7 @@ export default defineUnlistedScript(() => {
       try {
         const outcome = await fillField(field, confirmed.value, {
           confirmed: true,
-          overwrite: false,
+          overwrite: confirmed.overwrite === true,
         });
         const verification = outcome.status === 'filled'
           ? verifyField(field, confirmed.value)

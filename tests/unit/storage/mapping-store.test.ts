@@ -22,6 +22,11 @@ describe('MappingStore', () => {
     expect(await store.list()).toEqual([{ ...first, profileKey: 'profile.updated' }, second]);
     await store.delete('first'); expect(await store.list()).toEqual([second]); await store.deleteByProfileKey('profile.second'); expect(await store.list()).toEqual([]);
   });
+  it('replaces all mappings for portable config import', async () => {
+    const store = new MappingStore(new MemoryStorage()); await store.upsert(mapping('old'));
+    await store.replace([mapping('new-1'), mapping('new-2')]);
+    expect((await store.list()).map((item) => item.id)).toEqual(['new-1', 'new-2']);
+  });
   it('allows the same fingerprint/profile key in every scope with stable IDs', () => {
     const scopes = [{ kind: 'global' } as const, { kind: 'host', host: 'example.test' } as const, { kind: 'path', host: 'example.test', path: '/apply' } as const];
     const ids = scopes.map((scope) => createMappingId('same', 'custom.same', scope));

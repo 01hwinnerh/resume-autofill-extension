@@ -17,7 +17,7 @@ function isMappingEnvelope(value: unknown): value is MappingEnvelope {
     && candidate.mappings.every(isUserFieldMapping);
 }
 
-function isUserFieldMapping(value: unknown): value is UserFieldMapping {
+export function isUserFieldMapping(value: unknown): value is UserFieldMapping {
   if (!value || typeof value !== 'object') return false;
   const mapping = value as Partial<UserFieldMapping>;
   if (typeof mapping.id !== 'string' || !mapping.scope || typeof mapping.scope !== 'object'
@@ -55,6 +55,11 @@ export class MappingStore {
       else mappings[index] = normalized;
       return mappings;
     });
+  }
+
+  async replace(mappings: UserFieldMapping[]): Promise<void> {
+    const normalized = mappings.map((mapping) => ({ ...mapping, scope: normalizeMappingScope(mapping.scope) }));
+    return this.update(() => normalized);
   }
 
   async delete(id: string): Promise<void> {

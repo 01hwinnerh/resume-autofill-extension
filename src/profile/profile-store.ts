@@ -4,7 +4,7 @@ import { StorageError, type StoragePort } from '../storage/storage-port';
 const PROFILE_KEY = 'resume-autofill.profile.v1';
 const EMPTY_PROFILE: Profile = { schemaVersion: PROFILE_SCHEMA_VERSION, fields: {} };
 
-function isProfile(value: unknown): value is Profile {
+export function isProfile(value: unknown): value is Profile {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<Profile>;
   return candidate.schemaVersion === PROFILE_SCHEMA_VERSION

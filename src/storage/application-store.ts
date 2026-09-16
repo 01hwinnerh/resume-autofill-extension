@@ -36,6 +36,26 @@ function isEnvelope(value: unknown): value is ApplicationEnvelope {
     && envelope.records.every(isApplicationRecord);
 }
 
+function normalizeText(value: string): string {
+  return value.trim().replace(/\s+/g, '').toLocaleLowerCase();
+}
+
+function normalizeUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    url.search = '';
+    url.pathname = url.pathname.replace(/\/$/, '') || '/';
+    return url.toString();
+  } catch {
+    return value.trim();
+  }
+}
+
+function normalizeHost(value: string): string {
+  return value.trim().replace(/^www\./i, '').toLocaleLowerCase();
+}
+
 export class ApplicationStore {
   private writeQueue: Promise<void> = Promise.resolve();
 
@@ -48,6 +68,21 @@ export class ApplicationStore {
     } catch (cause) {
       throw new StorageError('read_failed', 'read', APPLICATIONS_KEY, cause);
     }
+  }
+
+  async findDuplicates(input: NewApplicationRecord, withinDays = 30): Promise<ApplicationRecord[]> {
+    const records = await this.list();
+    const company = normalizeText(input.company);
+    const role = normalizeText(input.role);
+    const url = normalizeUrl(input.url);
+    const host = normalizeHost(input.sourceHost);
+    const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
+    return records.filter((record) => {
+      const sameUrl = normalizeUrl(record.url) === url;
+      const sameIdentity = normalizeText(record.company) === company && normalizeText(record.role) === role;
+      const recentSameHost = normalizeHost(record.sourceHost) === host && Date.parse(record.appliedAt) >= cutoff;
+      return sameIdentity && (sameUrl || recentSameHost);
+    });
   }
 
   async create(input: NewApplicationRecord): Promise<ApplicationRecord> {

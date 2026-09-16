@@ -128,3 +128,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .failed-field-item strong { color:#7f1d1d; font-size:12px; }
 .failed-field-item small { overflow-wrap:anywhere; color:#a14b4b; font-size:10px; }
 .failed-field-list > button { width:100%; margin-top:2px; }
+
+.new-fields-alert { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:-4px 0 10px; padding:9px 11px; border:1px solid #a8cdfd; border-radius:10px; background:#edf6ff; color:#155ea8; }
+.new-fields-alert span { font-size:12px; font-weight:700; }
+.new-fields-alert button { min-height:30px; padding:0 10px; border:0; border-radius:8px; color:#fff; background:#1677ff; font-weight:650; }
+.duplicate-warning { display:grid; gap:6px; padding:10px; border:1px solid #f3ca72; border-radius:10px; background:#fff9e9; color:#7a4b00; }
+.duplicate-warning > strong { font-size:12px; }
+.duplicate-warning > span { font-size:10px; }
+.duplicate-warning > div { display:flex; justify-content:flex-end; gap:7px; margin-top:3px; }

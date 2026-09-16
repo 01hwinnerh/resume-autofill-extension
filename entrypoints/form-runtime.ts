@@ -4,8 +4,9 @@ import { verifyField } from '../src/filling/verify-field';
 import { highlightField } from '../src/form-engine/focus-field';
 import { scanDocument, toDescriptor } from '../src/form-engine/scanner';
 import type { RuntimePageField } from '../src/form-engine/runtime-types';
+import { extractApplicationMetadata } from '../src/runtime/application-identity';
 import { createRuntimeError } from '../src/runtime/runtime-errors';
-import type { ConfirmedFill, PageMessage, PageResponse } from '../src/shared/messages';
+import type { ConfirmedFill, PageFieldsChangedMessage, PageMessage, PageResponse } from '../src/shared/messages';
 import { browser } from 'wxt/browser';
 
 const installedKey = '__resumeAutofillFormRuntimeInstalled';
@@ -16,6 +17,11 @@ export default defineUnlistedScript(() => {
   page[installedKey] = true;
 
   const runtimeFields = new Map<string, RuntimePageField>();
+  let baselineFingerprints = new Set<string>();
+  let lastNotifiedCount = 0;
+  let hasScanned = false;
+  let changeTimer: number | undefined;
+  const observers = new Map<Document, MutationObserver>();
 
   function documentAtPath(framePath: number[]): Document | undefined {
     let current = document;
@@ -54,15 +60,86 @@ export default defineUnlistedScript(() => {
     return fields;
   }
 
+  function fieldFingerprint(field: RuntimePageField): string {
+    return `${field.framePath.join('.')}:${field.fingerprint}`;
+  }
+
+  function observedDocuments(currentDocument: Document, result: Document[] = []): Document[] {
+    result.push(currentDocument);
+    for (const frame of currentDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>('iframe, frame')) {
+      try {
+        if (frame.contentDocument) observedDocuments(frame.contentDocument, result);
+      } catch {
+        // Cross-origin frames cannot be observed from this runtime.
+      }
+    }
+    return result;
+  }
+
+  function scheduleFieldChangeCheck(): void {
+    if (!hasScanned) return;
+    if (changeTimer !== undefined) window.clearTimeout(changeTimer);
+    changeTimer = window.setTimeout(() => {
+      const current = scanFrameTree(document);
+      const newFieldCount = current.filter((field) => !baselineFingerprints.has(fieldFingerprint(field))).length;
+      attachObservers();
+      if (newFieldCount <= lastNotifiedCount) return;
+      lastNotifiedCount = newFieldCount;
+      const message: PageFieldsChangedMessage = { type: 'page-fields-changed', newFieldCount };
+      void browser.runtime.sendMessage(message).catch(() => undefined);
+    }, 450);
+  }
+
+  function containsPotentialField(node: Node): boolean {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    const element = node as Element;
+    return ['INPUT', 'TEXTAREA', 'SELECT', 'IFRAME', 'FRAME'].includes(element.tagName)
+      || element.querySelector('input,textarea,select,iframe,frame') !== null;
+  }
+
+  function relevantMutations(records: MutationRecord[]): boolean {
+    return records.some((record) => record.type === 'attributes'
+      ? containsPotentialField(record.target)
+      : Array.from(record.addedNodes).some(containsPotentialField));
+  }
+
+  function attachObservers(): void {
+    const documents = new Set(observedDocuments(document));
+    for (const [observedDocument, observer] of observers) {
+      if (documents.has(observedDocument)) continue;
+      observer.disconnect();
+      observers.delete(observedDocument);
+    }
+    for (const currentDocument of documents) {
+      if (observers.has(currentDocument)) continue;
+      const Observer = currentDocument.defaultView?.MutationObserver;
+      if (!Observer || !currentDocument.documentElement) continue;
+      const observer = new Observer((records) => {
+        if (relevantMutations(records)) scheduleFieldChangeCheck();
+      });
+      observer.observe(currentDocument.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['hidden', 'aria-hidden', 'class', 'style'],
+      });
+      observers.set(currentDocument, observer);
+    }
+  }
+
   function scan(requestId: string): PageResponse {
     try {
       const fields = scanFrameTree(document);
       runtimeFields.clear();
       for (const field of fields) runtimeFields.set(field.fieldId, field);
+      baselineFingerprints = new Set(fields.map(fieldFingerprint));
+      lastNotifiedCount = 0;
+      hasScanned = true;
+      attachObservers();
       return {
         type: 'scan-result',
         requestId,
-        result: { descriptors: fields.map(toDescriptor) },
+        result: { descriptors: fields.map(toDescriptor), metadata: extractApplicationMetadata(document) },
       };
     } catch {
       return {

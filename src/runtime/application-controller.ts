@@ -212,7 +212,12 @@ export function createApplicationController(
         title: context.title,
         scannedAt: new Date().toISOString(),
       },
-      page: { url: context.url, host: context.host, title: context.title },
+      page: {
+        url: context.url,
+        host: context.host,
+        title: context.title,
+        ...(response.result.metadata ? { metadata: response.result.metadata } : {}),
+      },
       adapterId: response.result.adapterId ?? adapter?.id,
       fields: resolveMatches(fields, profile, {
         mappings,

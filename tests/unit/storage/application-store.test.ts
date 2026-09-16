@@ -54,3 +54,23 @@ describe('ApplicationStore', () => {
     await expect(store.create({ company: '', role: '工程师', url: '', sourceHost: '' })).rejects.toThrow(/公司和职位/);
   });
 });
+
+
+describe('application duplicate detection', () => {
+  it('finds normalized URL duplicates and recent same-host identity duplicates', async () => {
+    const store = new ApplicationStore(new MemoryStorage());
+    await store.create({ company: ' 示例 公司 ', role: '前端 工程师', url: 'https://jobs.example.com/apply?id=1', sourceHost: 'jobs.example.com', appliedAt: new Date().toISOString() });
+
+    const byUrl = await store.findDuplicates({ company: '示例公司', role: '前端工程师', url: 'https://jobs.example.com/apply?id=2#form', sourceHost: 'www.jobs.example.com' });
+    expect(byUrl).toHaveLength(1);
+
+    const otherRole = await store.findDuplicates({ company: '示例公司', role: '后端工程师', url: 'https://jobs.example.com/apply?id=3', sourceHost: 'jobs.example.com' });
+    expect(otherRole).toHaveLength(0);
+  });
+
+  it('does not flag an old same-host record when the URL differs', async () => {
+    const store = new ApplicationStore(new MemoryStorage());
+    await store.create({ company: '示例公司', role: '工程师', url: 'https://jobs.example.com/old', sourceHost: 'jobs.example.com', appliedAt: '2020-01-01T00:00:00.000Z' });
+    expect(await store.findDuplicates({ company: '示例公司', role: '工程师', url: 'https://jobs.example.com/new', sourceHost: 'jobs.example.com' })).toHaveLength(0);
+  });
+});

@@ -61,10 +61,18 @@ export interface FieldMatch {
   status: FieldStatus;
 }
 
+export interface ApplicationPageMetadata {
+  jobTitle?: string;
+  companyName?: string;
+  siteName?: string;
+  heading?: string;
+}
+
 export interface ScanPageInfo {
   url: string;
   host: string;
   title: string;
+  metadata?: ApplicationPageMetadata;
 }
 
 export interface ScanResult {

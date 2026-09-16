@@ -3,10 +3,12 @@ import { browser } from 'wxt/browser';
 import { buildFillPreviewSession, buildProfilePreviewSession, previewStorageKey } from '../../src/preview/preview-session';
 import type { NewApplicationRecord } from '../../src/shared/application-record';
 import { ProfileStore } from '../../src/profile/profile-store';
+import { inferApplicationIdentity } from '../../src/runtime/application-identity';
 import type { FillSummary } from '../../src/runtime/application-controller';
 import type { ScanTarget } from '../../src/runtime/scan-session';
+import type { ScanPageInfo } from '../../src/shared/form';
 import { createMappingId, normalizeMappingScope, type MappingScope, type UserFieldMapping } from '../../src/shared/mapping';
-import type { ConfirmedFill, RuntimeCommandResponse } from '../../src/shared/messages';
+import type { ConfirmedFill, PageFieldsChangedMessage, RuntimeCommandResponse } from '../../src/shared/messages';
 import type { FillPolicy, Profile, ProfileField } from '../../src/shared/profile';
 import { ApplicationStore } from '../../src/storage/application-store';
 import { LocalStorage } from '../../src/storage/local-storage';
@@ -27,11 +29,14 @@ const mappingStore = new MappingStore(storage);
 const applicationStore = new ApplicationStore(storage);
 type View = 'assistant' | 'profile' | 'custom';
 
-function applicationDraft(title: string, url: string): ApplicationDraft {
-  const parsed = new URL(url);
-  const hostCompany = parsed.hostname.replace(/^www\./, '').split('.')[0] || parsed.hostname;
-  const cleanTitle = title.replace(/\s*[-|｜]\s*(招聘|职位|校园招聘|社会招聘).*$/i, '').trim();
-  return { company: hostCompany, role: cleanTitle || '待补充职位', url, sourceHost: parsed.host };
+function applicationDraft(page: ScanPageInfo): ApplicationDraft {
+  const identity = inferApplicationIdentity(page);
+  return {
+    company: identity.company,
+    role: identity.role,
+    url: page.url,
+    sourceHost: new URL(page.url).host,
+  };
 }
 
 function extensionUrl(path: string): string {
@@ -55,6 +60,7 @@ export default function App() {
   const [mappings, setMappings] = useState<UserFieldMapping[]>([]);
   const [lastApplication, setLastApplication] = useState<ApplicationDraft>();
   const [manualApplication, setManualApplication] = useState<ApplicationDraft>();
+  const [newFieldCount, setNewFieldCount] = useState(0);
   const completion = profileCompletion(profile);
   const scanResult = state.kind === 'review' || state.kind === 'filling' || state.kind === 'result' ? state.result : undefined;
   const activeTarget = scanResult?.target;
@@ -92,10 +98,24 @@ export default function App() {
     };
   }, [activeTarget]);
 
+  useEffect(() => {
+    if (!activeTarget) return;
+    const onFieldsChanged = (message: unknown, sender: { tab?: { id?: number } }) => {
+      const change = message as Partial<PageFieldsChangedMessage>;
+      if (change.type !== 'page-fields-changed'
+        || sender.tab?.id !== activeTarget.tabId
+        || typeof change.newFieldCount !== 'number') return;
+      setNewFieldCount(change.newFieldCount);
+    };
+    browser.runtime.onMessage.addListener(onFieldsChanged);
+    return () => browser.runtime.onMessage.removeListener(onFieldsChanged);
+  }, [activeTarget?.tabId, activeTarget?.url]);
+
   async function scan() {
     setNotice('');
     setSelected([]);
     setLastApplication(undefined);
+    setNewFieldCount(0);
     dispatch({ type: 'scan_requested' });
     try {
       const [loadedProfile, target] = await Promise.all([profileStore.load(), currentPageTarget()]);
@@ -175,7 +195,7 @@ export default function App() {
   async function fill(fields: ConfirmedFill[]) {
     if (!scanResult?.target || !fields.length || (state.kind !== 'review' && state.kind !== 'result')) return;
     const target = scanResult.target;
-    const draft = applicationDraft(scanResult.page.title, scanResult.page.url);
+    const draft = applicationDraft(scanResult.page);
     dispatch({ type: 'fill_requested', fields });
     try {
       const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target }) as RuntimeCommandResponse;
@@ -214,10 +234,17 @@ export default function App() {
     setNotice('');
     try {
       const target = await currentPageTarget();
-      setManualApplication(applicationDraft(target.title, target.url));
+      const page = scanResult?.page.url === target.url
+        ? scanResult.page
+        : { url: target.url, host: new URL(target.url).host, title: target.title };
+      setManualApplication(applicationDraft(page));
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : '无法读取当前招聘页面');
     }
+  }
+
+  async function findDuplicateApplications(draft: ApplicationDraft) {
+    return applicationStore.findDuplicates(draft);
   }
 
   async function recordApplication(draft: ApplicationDraft) {
@@ -234,13 +261,14 @@ export default function App() {
     {view === 'assistant' && <>
       {state.kind === 'idle' && <section className="assistant-empty card"><div className="completion-ring" aria-label={`资料完成度 ${completion.percent}%`}>{completion.percent}%</div><div><h2>{completion.filled ? '继续完善资料并扫描页面' : '先完善基础资料'}</h2><p>{completion.filled ? `已填写 ${completion.filled}/${completion.total} 项资料` : '填写姓名、手机和邮箱后，匹配会更准确。'}</p></div><div className="completion-groups"><span>基本信息 {completion.bySection.basic.filled}/{completion.bySection.basic.total}</span><span>教育 {completion.bySection.education.filled}/{completion.bySection.education.total}</span><span>工作 {completion.bySection.work.filled}/{completion.bySection.work.total}</span></div>{!completion.filled && <button className="secondary-button" type="button" onClick={() => setView('profile')}>完善基础资料</button>}</section>}
       <section className="scan-card card"><div><strong>{scanResult ? scanResult.page.title || scanResult.page.host : '扫描当前招聘页面'}</strong><span>{scanResult ? scanResult.page.url : '仅扫描当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : scanResult ? '重新扫描' : '扫描当前页面'}</button></section>
+      {newFieldCount > 0 && <section className="new-fields-alert" role="status"><span>发现 {newFieldCount} 个新字段</span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
       <section className="manual-application-card card"><strong>已经完成投递？</strong><button type="button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
-      {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
+      {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
       {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} />}
       {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.fields.length} 个字段…</div>}
       {state.kind === 'result' && <>
         <FillResultPanel result={state.result} fields={state.fields} summary={state.summary} onRetry={(fields) => void fill(fields)} onLocate={(fieldId) => void locate(fieldId)} onRescan={() => void scan()} />
-        {lastApplication && <ApplicationRecordPrompt draft={lastApplication} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
+        {lastApplication && <ApplicationRecordPrompt draft={lastApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
       </>}
     </>}
   </main>;

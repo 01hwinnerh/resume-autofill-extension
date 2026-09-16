@@ -27,6 +27,12 @@ export type RuntimeCommand =
 export interface PageScanResult {
   descriptors: import('./form').PageFieldDescriptor[];
   adapterId?: string;
+  metadata?: import('./form').ApplicationPageMetadata;
+}
+
+export interface PageFieldsChangedMessage {
+  type: 'page-fields-changed';
+  newFieldCount: number;
 }
 
 export interface PageFillResult {

@@ -19,18 +19,22 @@ export async function runRuntimeMessage(page: Page, message: PageMessage): Promi
   if (!initialized) {
     await page.evaluate(() => {
       const global = globalThis as typeof globalThis & {
-        browser?: { runtime: { id: string; onMessage: { addListener: (listener: (message: PageMessage) => unknown) => void } } };
+        browser?: { runtime: { id: string; sendMessage: (message: unknown) => Promise<void>; onMessage: { addListener: (listener: (message: PageMessage) => unknown) => void } } };
         __resumeRuntimeListeners?: Array<(message: PageMessage) => unknown>;
+        __resumeRuntimeNotifications?: unknown[];
         __resumeRuntimeReady?: boolean;
       };
       const listeners: Array<(message: PageMessage) => unknown> = [];
+      const notifications: unknown[] = [];
       global.browser = {
         runtime: {
           id: 'fixture-extension',
+          sendMessage: async (message) => { notifications.push(message); },
           onMessage: { addListener: (listener) => listeners.push(listener) },
         },
       };
       global.__resumeRuntimeListeners = listeners;
+      global.__resumeRuntimeNotifications = notifications;
       global.__resumeRuntimeReady = false;
     });
     await page.addScriptTag({ content: runtimeBundle });
@@ -45,4 +49,9 @@ export async function runRuntimeMessage(page: Page, message: PageMessage): Promi
     if (!listener) throw new Error('form runtime listener was not registered');
     return await listener(currentMessage) as PageResponse;
   }, message);
+}
+
+
+export async function runtimeNotifications(page: Page): Promise<unknown[]> {
+  return page.evaluate(() => [...((globalThis as { __resumeRuntimeNotifications?: unknown[] }).__resumeRuntimeNotifications ?? [])]);
 }

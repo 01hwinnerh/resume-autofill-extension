@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { runRuntimeMessage } from './support/runtime-harness';
+import { runRuntimeMessage, runtimeNotifications } from './support/runtime-harness';
 
 test('scans without mutating the page before confirmation', async ({ page }) => {
   await page.goto('/basic-form.html');
@@ -116,4 +116,16 @@ test('explicit retry can overwrite a value left by a failed attempt', async ({ p
   expect(retry.results[0].outcome.status).toBe('filled');
   expect(retry.results[0].verification?.verified).toBe(true);
   await expect(page.locator('#email')).toHaveValue('fresh@example.test');
+});
+
+
+test('notifies when a dynamic step reveals new fields without exposing values', async ({ page }) => {
+  await page.goto('/dynamic-form.html');
+  await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-watch-dynamic' });
+  await page.getByRole('button', { name: '添加教育经历' }).click();
+  await expect.poll(async () => runtimeNotifications(page)).toContainEqual({
+    type: 'page-fields-changed', newFieldCount: 1,
+  });
+  const serialized = JSON.stringify(await runtimeNotifications(page));
+  expect(serialized).not.toContain('毕业院校');
 });

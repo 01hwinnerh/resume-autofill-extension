@@ -39,6 +39,34 @@ function profileWith(
 }
 
 describe('matchFields', () => {
+  it('recognizes known page fields even when the profile is empty', () => {
+    const profile: Profile = { schemaVersion: 1, fields: {} };
+    const matches = matchFields(
+      [
+        descriptor({ fieldId: 'name', label: '姓名', name: 'full_name', autocomplete: 'name' }),
+        descriptor({ fieldId: 'degree', label: '学历类型', kind: 'combobox', sectionLabel: '教育经历', sectionIndex: 0 }),
+      ],
+      profile,
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/all-features-ats.html' } },
+    );
+
+    expect(matches).toMatchObject([
+      { status: 'missing_profile', selected: { profileKey: 'identity.name', source: 'generic' } },
+      { status: 'missing_profile', selected: { profileKey: 'educations.0.degreeType', source: 'generic' } },
+    ]);
+  });
+
+  it('still leaves unknown fields unrecognized when the profile is empty', () => {
+    const [match] = matchFields(
+      [descriptor({ label: '内部审批编码', name: 'internal_approval_code' })],
+      { schemaVersion: 1, fields: {} },
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/all-features-ats.html' } },
+    );
+
+    expect(match.status).toBe('unrecognized');
+    expect(match.selected).toBeUndefined();
+  });
+
   it('matches Chinese and English aliases to the same canonical field', () => {
     const matches = matchFields(
       [descriptor({

@@ -13,6 +13,7 @@ const allowedFixtures = new Set([
   'standard-ats.html',
   'component-ats.html',
   'complex-ats.html',
+  'all-features-ats.html',
   'iframe-ats-form.html',
 ]);
 const requestedPort = process.argv.slice(2).indexOf('--port');

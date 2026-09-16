@@ -11,6 +11,8 @@ describe('form contracts', () => {
     expect(FIELD_STATUSES).toEqual([
       'matched',
       'needs_confirmation',
+      'missing_profile',
+      'unrecognized',
       'skipped_existing',
       'filled',
       'verified',

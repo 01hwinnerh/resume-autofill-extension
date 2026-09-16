@@ -13,7 +13,7 @@ export interface FieldMatchViewProps {
 }
 
 export const STATUS_LABELS: Record<FieldMatch['status'], string> = {
-  matched: '已匹配', needs_confirmation: '待确认', skipped_existing: '已有值',
+  matched: '已匹配', needs_confirmation: '待确认', missing_profile: '待补资料', unrecognized: '未识别', skipped_existing: '已有值',
   filled: '已填写', verified: '已校验', failed: '失败', unsupported: '手动处理',
 };
 

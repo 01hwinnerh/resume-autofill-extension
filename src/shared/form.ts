@@ -4,6 +4,8 @@ import type { ScanTarget } from '../runtime/scan-session';
 export const FIELD_STATUSES = [
   'matched',
   'needs_confirmation',
+  'missing_profile',
+  'unrecognized',
   'skipped_existing',
   'filled',
   'verified',

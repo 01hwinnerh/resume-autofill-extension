@@ -2,7 +2,7 @@ import type { FieldMatch, FieldStatus } from '../shared/form';
 import type { FieldFilter } from './field-selection';
 import { STATUS_LABELS } from './field-match-view';
 
-const VISIBLE_STATUSES: FieldStatus[] = ['matched', 'needs_confirmation', 'skipped_existing', 'unsupported', 'failed'];
+const VISIBLE_STATUSES: FieldStatus[] = ['matched', 'needs_confirmation', 'missing_profile', 'unrecognized', 'skipped_existing', 'unsupported', 'failed'];
 
 export function StatusSummary({
   fields, active = 'all', onFilter,

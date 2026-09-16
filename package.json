@@ -1,6 +1,6 @@
 {
   "name": "resume-autofill-extension",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Review-first form filling for job applications",
   "scripts": {
     "dev": "wxt",

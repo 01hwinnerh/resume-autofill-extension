@@ -74,3 +74,8 @@ aside small { color: #738098; }
 .preview-failure-item small { color:#a14b4b; }
 .preview-failure-item button { flex:none; }
 .retry-failures { margin-top:14px; }
+
+.modified-count { padding:5px 7px; border-radius:7px; background:#e8f3ff; color:#1763aa; font-weight:700; }
+.comparison-row.modified { background:#f7fbff; box-shadow:inset 3px 0 #1677ff; }
+.preview-failure-item em { margin-top:2px; color:#74545f; font-size:11px; font-style:normal; }
+.preview-failure-item.failure-page { background:#f6faff; }.preview-failure-item.failure-format,.preview-failure-item.failure-option { background:#fffaf1; }

@@ -33,6 +33,8 @@ function isFieldValue(value: unknown): boolean {
 }
 
 export class ProfileStore {
+  private writeQueue: Promise<void> = Promise.resolve();
+
   constructor(private readonly storage: StoragePort) {}
 
   async load(): Promise<Profile> {
@@ -46,6 +48,23 @@ export class ProfileStore {
   }
 
   async save(profile: Profile): Promise<void> {
+    const operation = this.writeQueue.then(() => this.write(profile));
+    this.writeQueue = operation.catch(() => undefined);
+    return operation;
+  }
+
+  async update(mutator: (profile: Profile) => Profile): Promise<Profile> {
+    let updated: Profile | undefined;
+    const operation = this.writeQueue.then(async () => {
+      updated = mutator(await this.load());
+      await this.write(updated);
+    });
+    this.writeQueue = operation.catch(() => undefined);
+    await operation;
+    return updated!;
+  }
+
+  private async write(profile: Profile): Promise<void> {
     try {
       await this.storage.set(PROFILE_KEY, profile);
     } catch (cause) {

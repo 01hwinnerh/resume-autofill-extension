@@ -200,8 +200,10 @@ export default function App() {
     try {
       const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target }) as RuntimeCommandResponse;
       if (!response.ok || !('filled' in response.data)) throw new Error(response.ok ? '填写结果格式错误' : response.error.message);
+      const summary = response.data as FillSummary;
       setLastApplication(draft);
-      dispatch({ type: 'fill_succeeded', summary: response.data as FillSummary });
+      dispatch({ type: 'fill_succeeded', summary });
+      if (summary.failed.length > 0) await locate(summary.failed[0].fieldId);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '填写失败';
       setNotice(message);
@@ -261,7 +263,7 @@ export default function App() {
     {view === 'assistant' && <>
       {state.kind === 'idle' && <section className="assistant-empty card"><div className="completion-ring" aria-label={`资料完成度 ${completion.percent}%`}>{completion.percent}%</div><div><h2>{completion.filled ? '继续完善资料并扫描页面' : '先完善基础资料'}</h2><p>{completion.filled ? `已填写 ${completion.filled}/${completion.total} 项资料` : '填写姓名、手机和邮箱后，匹配会更准确。'}</p></div><div className="completion-groups"><span>基本信息 {completion.bySection.basic.filled}/{completion.bySection.basic.total}</span><span>教育 {completion.bySection.education.filled}/{completion.bySection.education.total}</span><span>工作 {completion.bySection.work.filled}/{completion.bySection.work.total}</span></div>{!completion.filled && <button className="secondary-button" type="button" onClick={() => setView('profile')}>完善基础资料</button>}</section>}
       <section className="scan-card card"><div><strong>{scanResult ? scanResult.page.title || scanResult.page.host : '扫描当前招聘页面'}</strong><span>{scanResult ? scanResult.page.url : '仅扫描当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : scanResult ? '重新扫描' : '扫描当前页面'}</button></section>
-      {newFieldCount > 0 && <section className="new-fields-alert" role="status"><span>发现 {newFieldCount} 个新字段</span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
+      {newFieldCount > 0 && <section className="new-fields-alert" role="status"><span><strong>发现 {newFieldCount} 个新字段</strong><small>页面步骤或经历区块已变化，重新扫描不会自动填写或提交。</small></span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
       <section className="manual-application-card card"><strong>已经完成投递？</strong><button type="button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
       {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
       {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} />}

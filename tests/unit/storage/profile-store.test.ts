@@ -33,6 +33,23 @@ describe('ProfileStore', () => {
     await expect(store.load()).resolves.toEqual(profile);
   });
 
+  it('serializes concurrent updates so rapid preview edits do not overwrite each other', async () => {
+    const store = new ProfileStore(new MemoryStorage());
+    await store.save({
+      schemaVersion: 1,
+      fields: {
+        name: { key: 'name', label: '姓名', type: 'text', value: '原姓名', policy: 'auto' },
+        city: { key: 'city', label: '城市', type: 'text', value: '原城市', policy: 'auto' },
+      },
+    });
+
+    const updateName = store.update((profile) => ({ ...profile, fields: { ...profile.fields, name: { ...profile.fields.name, value: '新姓名' } } }));
+    const updateCity = store.update((profile) => ({ ...profile, fields: { ...profile.fields, city: { ...profile.fields.city, value: '新城市' } } }));
+    await Promise.all([updateName, updateCity]);
+
+    expect((await store.load()).fields).toMatchObject({ name: { value: '新姓名' }, city: { value: '新城市' } });
+  });
+
   it('falls back when the persisted profile has an invalid schema version', async () => {
     const storage = new MemoryStorage();
     await storage.set('resume-autofill.profile.v1', { schemaVersion: 2, fields: {} });

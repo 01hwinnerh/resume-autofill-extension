@@ -24,4 +24,9 @@ describe('FieldMatchView', () => {
     fireEvent.click(screen.getByRole('button', { name: '定位页面字段' }));
     expect(onLocate).toHaveBeenCalledWith('field-1');
   });
+
+  it('shows strict option guidance for select and combobox controls', () => {
+    render(<FieldMatchView match={{ ...match, descriptor: { ...match.descriptor, kind: 'combobox' } }} candidateValue="北京" selected onToggle={vi.fn()} />);
+    expect(screen.getByText('只会选择唯一且完全一致的候选项，避免误选。')).toBeTruthy();
+  });
 });

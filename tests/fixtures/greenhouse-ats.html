@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Greenhouse-style ATS compatibility fixture</title>
+  <style>
+    body{margin:0;background:#f5f7f5;color:#17352a;font:15px/1.5 system-ui,sans-serif}main{max-width:780px;margin:30px auto;padding:30px;background:#fff;border-radius:16px;box-shadow:0 14px 40px #17352a14}h1{margin-top:0}fieldset{margin:22px 0;padding:20px;border:1px solid #d4e2da;border-radius:12px}label{display:grid;gap:6px;margin:13px 0;font-weight:650}input,select,textarea{padding:10px 12px;border:1px solid #aebfb5;border-radius:7px;font:inherit}button{padding:10px 16px;border:0;border-radius:8px;background:#147d50;color:#fff}.hint{color:#68796f}output{margin-left:14px}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Greenhouse-style application</h1>
+    <p class="hint">Exercises bracketed field names, standard labels, education fields and manual resume upload.</p>
+    <form id="application-form">
+      <fieldset><legend>Personal Information</legend>
+        <label for="gh-first-name">First Name<input id="gh-first-name" name="job_application[first_name]" autocomplete="given-name" /></label>
+        <label for="gh-last-name">Last Name<input id="gh-last-name" name="job_application[last_name]" autocomplete="family-name" /></label>
+        <label for="gh-email">Email<input id="gh-email" name="job_application[email]" type="email" autocomplete="email" /></label>
+        <label for="gh-phone">Phone<input id="gh-phone" name="job_application[phone]" type="tel" autocomplete="tel" /></label>
+        <label for="gh-linkedin">LinkedIn Profile<input id="gh-linkedin" name="job_application[answers][linkedin]" type="url" /></label>
+      </fieldset>
+      <fieldset><legend>Education</legend>
+        <label for="gh-school">School<input id="gh-school" name="job_application[educations][0][school_name]" /></label>
+        <label for="gh-major">Major<input id="gh-major" name="job_application[educations][0][discipline]" /></label>
+        <label for="gh-degree">Degree<select id="gh-degree" name="job_application[educations][0][degree]"><option value="">Select</option><option>Bachelor</option><option>Master</option></select></label>
+        <label for="gh-start">Start Date<input id="gh-start" name="job_application[educations][0][start_date]" type="month" /></label>
+        <label for="gh-end">End Date<input id="gh-end" name="job_application[educations][0][end_date]" type="month" /></label>
+      </fieldset>
+      <label for="gh-cover-letter">Cover Letter<textarea id="gh-cover-letter" name="job_application[cover_letter]" rows="4"></textarea></label>
+      <label for="gh-resume">Resume<input id="gh-resume" name="job_application[resume]" type="file" /></label>
+      <button type="submit">Submit Application</button><output id="submit-state">尚未提交</output>
+    </form>
+  </main>
+  <script>document.querySelector('form').addEventListener('submit',event=>{event.preventDefault();document.querySelector('#submit-state').textContent='检测到手动提交'});</script>
+</body>
+</html>

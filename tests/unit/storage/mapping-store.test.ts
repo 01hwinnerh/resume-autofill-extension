@@ -22,6 +22,22 @@ describe('MappingStore', () => {
     expect(await store.list()).toEqual([{ ...first, profileKey: 'profile.updated' }, second]);
     await store.delete('first'); expect(await store.list()).toEqual([second]); await store.deleteByProfileKey('profile.second'); expect(await store.list()).toEqual([]);
   });
+  it('replaces all mappings for portable config import', async () => {
+    const store = new MappingStore(new MemoryStorage()); await store.upsert(mapping('old'));
+    await store.replace([mapping('new-1'), mapping('new-2')]);
+    expect((await store.list()).map((item) => item.id)).toEqual(['new-1', 'new-2']);
+  });
+  it('rejects an update whose generated ID already belongs to another mapping', async () => {
+    const store = new MappingStore(new MemoryStorage()); const first = mapping('first'); const second = mapping('second');
+    await store.replace([first, second]);
+    await expect(store.updateMapping(first.id, second)).rejects.toThrow('该字段映射已存在。');
+    expect(await store.list()).toEqual([first, second]);
+  });
+  it('deletes several mappings in one serialized write', async () => {
+    const store = new MappingStore(new MemoryStorage()); await store.replace([mapping('first'), mapping('second'), mapping('third')]);
+    await store.deleteMany(['first', 'third']);
+    expect(await store.list()).toEqual([mapping('second')]);
+  });
   it('allows the same fingerprint/profile key in every scope with stable IDs', () => {
     const scopes = [{ kind: 'global' } as const, { kind: 'host', host: 'example.test' } as const, { kind: 'path', host: 'example.test', path: '/apply' } as const];
     const ids = scopes.map((scope) => createMappingId('same', 'custom.same', scope));

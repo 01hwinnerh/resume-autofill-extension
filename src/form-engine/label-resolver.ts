@@ -25,16 +25,23 @@ function cleanLabel(value: string | null | undefined): string | undefined {
   return normalized && normalized.length <= 100 ? normalized : undefined;
 }
 
+function labelText(label: HTMLLabelElement | null | undefined): string | undefined {
+  if (!label) return undefined;
+  const clone = label.cloneNode(true) as HTMLLabelElement;
+  clone.querySelectorAll('input, textarea, select, button, [role="combobox"], [role="listbox"]').forEach((control) => control.remove());
+  return cleanLabel(clone.textContent);
+}
+
 function labelFor(element: HTMLElement): string | undefined {
   if ('labels' in element) {
     const labels = (element as HTMLInputElement).labels;
-    const native = cleanLabel(labels?.[0]?.textContent);
+    const native = labelText(labels?.[0]);
     if (native) return native;
   }
   const id = element.id;
   if (!id) return undefined;
   const label = Array.from(element.ownerDocument.querySelectorAll('label')).find((candidate) => candidate.htmlFor === id);
-  return cleanLabel(label?.textContent);
+  return labelText(label);
 }
 
 function ariaLabelledBy(element: HTMLElement): string | undefined {
@@ -121,7 +128,7 @@ export function resolveLabel(element: HTMLElement): string {
   if (formily) return formily;
   const associated = labelFor(element);
   if (associated) return associated;
-  const wrapping = cleanLabel(element.closest('label')?.textContent);
+  const wrapping = labelText(element.closest('label'));
   if (wrapping) return wrapping;
   const labelledBy = ariaLabelledBy(element);
   if (labelledBy) return labelledBy;
@@ -158,6 +165,8 @@ export function resolveSectionLabel(element: HTMLElement): string | undefined {
       if (legend) return legend;
     }
     if (ancestor.getAttribute('role') === 'group') {
+      const labelledBy = ariaLabelledBy(ancestor);
+      if (labelledBy) return labelledBy;
       const title = cleanLabel(ancestor.getAttribute('title'));
       if (title) return title;
     }

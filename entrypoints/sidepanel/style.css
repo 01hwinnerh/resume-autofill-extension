@@ -136,3 +136,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .duplicate-warning > strong { font-size:12px; }
 .duplicate-warning > span { font-size:10px; }
 .duplicate-warning > div { display:flex; justify-content:flex-end; gap:7px; margin-top:3px; }
+
+.auto-locate-note { margin:0; padding:8px 10px; border-radius:8px; background:#eef6ff; color:#215f9b; font-size:11px; }
+.failed-field-item em { margin-top:2px; color:#6f5060; font-size:10px; font-style:normal; line-height:1.4; }
+.failed-field-item.failure-page { border-color:#bfdbfe; background:#f5f9ff; }.failed-field-item.failure-page strong { color:#1d4f91; }
+.failed-field-item.failure-format, .failed-field-item.failure-option { border-color:#f3d29c; background:#fffaf0; }.failed-field-item.failure-format strong, .failed-field-item.failure-option strong { color:#8a4b08; }
+
+.field-preparation-hint { margin:7px 0 0; padding:6px 8px; border-radius:7px; background:#f2f7ff; color:#486889; font-size:10px; }
+.new-fields-alert span { display:grid; }.new-fields-alert span strong { font-size:12px; }.new-fields-alert span small { margin-top:1px; color:#3975af; font-size:10px; font-weight:400; }

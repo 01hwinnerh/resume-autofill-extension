@@ -14,6 +14,9 @@ const allowedFixtures = new Set([
   'component-ats.html',
   'complex-ats.html',
   'all-features-ats.html',
+  'greenhouse-ats.html',
+  'lever-ats.html',
+  'workday-ats.html',
   'iframe-ats-form.html',
 ]);
 const requestedPort = process.argv.slice(2).indexOf('--port');

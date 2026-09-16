@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lever-style ATS compatibility fixture</title>
+  <style>
+    body{margin:0;background:#f3f6fa;color:#202b3c;font:15px/1.5 system-ui,sans-serif}.application-shell{max-width:780px;margin:30px auto;padding:30px;background:#fff;border-radius:16px;box-shadow:0 14px 40px #20385d14}.application-section{margin:24px 0;padding:20px;border:1px solid #dbe3ef;border-radius:12px}.application-question{margin:14px 0}.application-question label{display:block;margin-bottom:6px;font-weight:700}input,select,textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #afbdd0;border-radius:8px;font:inherit}button{padding:10px 16px;border:0;border-radius:8px;background:#3156d3;color:#fff}output{margin-left:14px}.hint{color:#718096}
+  </style>
+</head>
+<body>
+  <main class="application-shell">
+    <h1>Lever-style application</h1>
+    <p class="hint">Exercises SPA question wrappers, data-qa attributes, selects and work-experience context.</p>
+    <form id="application-form">
+      <section class="application-section"><h2>Personal Information</h2>
+        <div class="application-question"><label for="lever-name">Full Name</label><input id="lever-name" name="name" data-qa="name-input" autocomplete="name" /></div>
+        <div class="application-question"><label for="lever-email">Email</label><input id="lever-email" name="email" data-qa="email-input" type="email" autocomplete="email" /></div>
+        <div class="application-question"><label for="lever-phone">Phone</label><input id="lever-phone" name="phone" data-qa="phone-input" type="tel" autocomplete="tel" /></div>
+        <div class="application-question"><label for="lever-location">Current Location</label><select id="lever-location" name="location" data-qa="location-select"><option value="">Select</option><option>Beijing</option><option>Shanghai</option></select></div>
+      </section>
+      <section class="application-section work-experience"><h2>Work Experience</h2>
+        <div class="application-question"><label for="lever-company">Company</label><input id="lever-company" name="experience[0][company]" data-qa="company-input" /></div>
+        <div class="application-question"><label for="lever-title">Job Title</label><input id="lever-title" name="experience[0][title]" data-qa="title-input" /></div>
+        <div class="application-question"><label for="lever-start">Start Date</label><input id="lever-start" name="experience[0][start]" type="month" /></div>
+        <div class="application-question"><label for="lever-end">End Date</label><input id="lever-end" name="experience[0][end]" type="month" /></div>
+        <div class="application-question"><label for="lever-description">Description</label><textarea id="lever-description" name="experience[0][description]" rows="4"></textarea></div>
+      </section>
+      <div class="application-question"><label for="lever-portfolio">Portfolio URL</label><input id="lever-portfolio" name="urls[portfolio]" type="url" /></div>
+      <div class="application-question"><label for="lever-resume">Resume</label><input id="lever-resume" name="resume" type="file" /></div>
+      <button type="submit" data-qa="submit">Submit Application</button><output id="submit-state">尚未提交</output>
+    </form>
+  </main>
+  <script>document.querySelector('form').addEventListener('submit',event=>{event.preventDefault();document.querySelector('#submit-state').textContent='检测到手动提交'});</script>
+</body>
+</html>

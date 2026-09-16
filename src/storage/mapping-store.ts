@@ -17,7 +17,7 @@ function isMappingEnvelope(value: unknown): value is MappingEnvelope {
     && candidate.mappings.every(isUserFieldMapping);
 }
 
-function isUserFieldMapping(value: unknown): value is UserFieldMapping {
+export function isUserFieldMapping(value: unknown): value is UserFieldMapping {
   if (!value || typeof value !== 'object') return false;
   const mapping = value as Partial<UserFieldMapping>;
   if (typeof mapping.id !== 'string' || !mapping.scope || typeof mapping.scope !== 'object'
@@ -55,6 +55,28 @@ export class MappingStore {
       else mappings[index] = normalized;
       return mappings;
     });
+  }
+
+  async replace(mappings: UserFieldMapping[]): Promise<void> {
+    const normalized = mappings.map((mapping) => ({ ...mapping, scope: normalizeMappingScope(mapping.scope) }));
+    return this.update(() => normalized);
+  }
+
+  async updateMapping(id: string, mapping: UserFieldMapping): Promise<void> {
+    const normalized = { ...mapping, scope: normalizeMappingScope(mapping.scope) };
+    return this.update((mappings) => {
+      const collision = mappings.some((candidate) => candidate.id === normalized.id && candidate.id !== id);
+      if (collision) throw new Error('该字段映射已存在。');
+      const remaining = mappings.filter((candidate) => candidate.id !== id);
+      const index = mappings.findIndex((candidate) => candidate.id === id);
+      remaining.splice(index < 0 ? remaining.length : Math.min(index, remaining.length), 0, normalized);
+      return remaining;
+    });
+  }
+
+  async deleteMany(ids: string[]): Promise<void> {
+    const selected = new Set(ids);
+    return this.update((mappings) => mappings.filter((mapping) => !selected.has(mapping.id)));
   }
 
   async delete(id: string): Promise<void> {

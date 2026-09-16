@@ -96,6 +96,21 @@ describe('matchFields', () => {
     expect(match.status).toBe('matched');
   });
 
+  it('keeps an education start date separate from employment start time', () => {
+    const profile: Profile = { schemaVersion: 1, fields: {
+      'educations.0.startDate': { key: 'educations.0.startDate', label: '入学时间', type: 'date', value: '2022-09', policy: 'auto' },
+      'employment.startWorkDate': { key: 'employment.startWorkDate', label: '参加工作时间', type: 'date', value: null, policy: 'auto' },
+    } };
+    const [match] = matchFields(
+      [descriptor({ label: '入学时间', inputType: 'month', sectionLabel: '教育经历', sectionIndex: 0 })],
+      profile,
+      { mappings: [], pageContext: { host: 'jobs.bytedance.com', path: '/campus/resume/example/apply' } },
+    );
+
+    expect(match.selected?.profileKey).toBe('educations.0.startDate');
+    expect(match.status).toBe('matched');
+  });
+
   it('does not use a repeated-section index as the only evidence for an unrelated date field', () => {
     const profile: Profile = { schemaVersion: 1, fields: {
       'educations.0.degree': { key: 'educations.0.degree', label: '学历', type: 'enum', value: '硕士研究生', policy: 'review' },

@@ -43,6 +43,26 @@ describe('label resolver', () => {
     expect(resolveLabel(document.querySelector('#schema-field')!)).toBe('专业');
   });
 
+  it('preserves education semantics when splitting Formily date ranges', () => {
+    document.body.innerHTML = `
+      <div id="formily-item-education_list">
+        <div data-form-field-name="start_end_time" data-form-field-i18n-name="起止时间">
+          <input id="education-start" /><input id="education-end" />
+        </div>
+      </div>
+      <div id="formily-item-career_list">
+        <div data-form-field-name="start_end_time" data-form-field-i18n-name="起止时间">
+          <input id="work-start" /><input id="work-end" />
+        </div>
+      </div>
+    `;
+
+    expect(resolveLabel(document.querySelector('#education-start')!)).toBe('入学时间');
+    expect(resolveLabel(document.querySelector('#education-end')!)).toBe('毕业时间');
+    expect(resolveLabel(document.querySelector('#work-start')!)).toBe('开始时间');
+    expect(resolveLabel(document.querySelector('#work-end')!)).toBe('结束时间');
+  });
+
   it('uses only explicit semantic section context', () => {
     document.body.innerHTML = `
       <fieldset><legend>  基本   信息 </legend><input id="legend-field" /></fieldset>

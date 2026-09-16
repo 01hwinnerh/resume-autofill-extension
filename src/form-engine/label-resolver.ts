@@ -107,8 +107,10 @@ function formilyLabel(element: HTMLElement): string | undefined {
   if (container.getAttribute('data-form-field-name') !== 'start_end_time') return label;
   const controls = Array.from(container.querySelectorAll<HTMLElement>('input, textarea, select'));
   const index = controls.indexOf(element);
-  if (index === 0) return '开始时间';
-  if (index === 1) return '结束时间';
+  const section = normalizeLabel(resolveSectionLabel(element));
+  const isEducationRange = /(教育|学历|学校|education|academic)/.test(section);
+  if (index === 0) return isEducationRange ? '入学时间' : '开始时间';
+  if (index === 1) return isEducationRange ? '毕业时间' : '结束时间';
   return label;
 }
 

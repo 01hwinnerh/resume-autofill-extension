@@ -29,8 +29,8 @@ test('component ATS recognizes Formily groups and safely selects one exact combo
   const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-component-ats' });
   const fields = scan.result.descriptors;
   const school = fields.find((field) => field.label === '学校名称')!;
-  const start = fields.find((field) => field.label === '开始时间')!;
-  const end = fields.find((field) => field.label === '结束时间')!;
+  const start = fields.find((field) => field.label === '入学时间')!;
+  const end = fields.find((field) => field.label === '毕业时间')!;
   const degree = fields.find((field) => field.label === '学历')!;
 
   expect(school).toMatchObject({ sectionLabel: '教育经历', sectionIndex: 0, semanticSource: 'formily-dom' });

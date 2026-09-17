@@ -20,6 +20,8 @@ export type PageMessage =
   | ({ type: 'scan-page'; namespace?: string } & SessionMessage)
   | ({ type: 'fill-fields'; fields: ConfirmedFill[] } & SessionMessage)
   | ({ type: 'focus-field'; fieldId: string } & SessionMessage);
+export interface PreviewOverlayMessage { type: 'open-preview-overlay'; sessionId: string; previewUrl: string }
+export type ContentPageMessage = PageMessage | PreviewOverlayMessage;
 
 export type RuntimeCommand =
   | { type: 'scan-active-tab'; target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'> }
@@ -41,6 +43,7 @@ export type PageResponse =
   | { type: 'scan-result'; requestId: string; result: PageScanResult }
   | { type: 'fill-result'; requestId: string; results: PageFillResult[] }
   | { type: 'focus-result'; requestId: string; fieldId: string; focused: boolean }
+  | { type: 'preview-overlay-opened'; sessionId: string }
   | { type: 'error'; requestId: string; error: RuntimeError };
 export type RuntimeCommandResponse =
   | { ok: true; data: ScanResult | import('../runtime/application-controller').FillSummary | { fieldId: string; focused: boolean } }

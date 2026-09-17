@@ -10,6 +10,7 @@ export interface FieldMatchViewProps {
   selected: boolean;
   onToggle: (fieldId: string, selected: boolean) => void;
   onLocate?: (fieldId: string) => void;
+  locateDisabled?: boolean;
   disabled?: boolean;
 }
 
@@ -45,7 +46,7 @@ export function fieldDisplayLabel(match: FieldMatch): string {
   return `${type}字段${ordinal ? ` ${ordinal}` : ''}`;
 }
 
-export function FieldMatchView({ match, candidateValue, selected, onToggle, onLocate, disabled = false }: FieldMatchViewProps) {
+export function FieldMatchView({ match, candidateValue, selected, onToggle, onLocate, locateDisabled = false, disabled = false }: FieldMatchViewProps) {
   const [revealed, setRevealed] = useState(false);
   const label = fieldDisplayLabel(match);
   const candidate = match.selected;
@@ -63,7 +64,7 @@ export function FieldMatchView({ match, candidateValue, selected, onToggle, onLo
       </label>
       <div className="value-transition"><span><small>页面当前值</small>{current}</span><b aria-hidden="true">→</b><span><small>将填写值</small>{next}</span></div>
       {preparationHint && <p className="field-preparation-hint">{preparationHint}</p>}
-      <div className="field-actions"><button type="button" onClick={() => setRevealed((value) => !value)}>{revealed ? '收起资料值' : '展开资料值'}</button>{onLocate && <button type="button" onClick={() => onLocate(match.descriptor.fieldId)}>定位页面字段</button>}</div>
+      <div className="field-actions"><button type="button" onClick={() => setRevealed((value) => !value)}>{revealed ? '收起资料值' : '展开资料值'}</button>{onLocate && <button type="button" disabled={locateDisabled} onClick={() => onLocate(match.descriptor.fieldId)}>定位页面字段</button>}</div>
       <div className="confidence-row"><span>置信度 {score}</span><span className="confidence-track"><i style={{ width: candidate ? `${candidate.score * 100}%` : '0%' }} /></span></div>
       {candidate && candidate.reasons.length > 0 && <details className="field-match-reason"><summary>查看匹配依据</summary><ul>{candidate.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></details>}
     </article>

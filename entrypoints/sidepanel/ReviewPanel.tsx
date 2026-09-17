@@ -49,7 +49,7 @@ type SaveMappingInput = {
   scopeKind: MappingScope['kind'];
 };
 
-export function ReviewPanel({ result, profile, selected, setSelected, onFill, onPreview, onSaveMapping, onLocate, onRescan }: {
+export function ReviewPanel({ result, profile, selected, setSelected, onFill, onPreview, onSaveMapping, onLocate, onRescan, targetActive = true }: {
   result: ScanResult;
   profile: Profile;
   selected: string[];
@@ -59,6 +59,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
   onSaveMapping: (input: SaveMappingInput) => Promise<void>;
   onLocate: (fieldId: string) => Promise<void>;
   onRescan: () => Promise<void>;
+  targetActive?: boolean;
 }) {
   const [filter, setFilter] = useState<FieldFilter>('all');
   const [query, setQuery] = useState('');
@@ -138,7 +139,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
         const profileKey = match.selected?.profileKey;
         const manualValue = manual[fieldId];
         return <div key={fieldId}>
-          <FieldMatchView match={match} candidateValue={profileKey ? profile.fields[profileKey]?.value : manualValue?.value} selected={selectedSet.has(fieldId)} disabled={!isSelectableField(match) && !manualValue?.value.trim()} onToggle={(id, checked) => setSelected((current) => checked ? [...new Set([...current, id])] : current.filter((item) => item !== id))} onLocate={(id) => void onLocate(id)} />
+          <FieldMatchView match={match} candidateValue={profileKey ? profile.fields[profileKey]?.value : manualValue?.value} selected={selectedSet.has(fieldId)} disabled={!isSelectableField(match) && !manualValue?.value.trim()} locateDisabled={!targetActive} onToggle={(id, checked) => setSelected((current) => checked ? [...new Set([...current, id])] : current.filter((item) => item !== id))} onLocate={(id) => void onLocate(id)} />
           {!match.selected && ['text', 'textarea'].includes(match.descriptor.kind) && <div className="inline-value-editor card-subtle">
             <label><span>本次填写值</span><input aria-label={`${match.descriptor.label}本次填写值`} type={match.descriptor.inputType === 'date' ? 'date' : match.descriptor.inputType === 'number' ? 'number' : 'text'} value={manualValue?.value ?? ''} onChange={(event) => updateManual(fieldId, { value: event.target.value }, match.descriptor.label || '自定义字段')} /></label>
             <label className="choice"><input aria-label="保存为自定义字段" type="checkbox" checked={manualValue?.mode === 'save'} onChange={(event) => updateManual(fieldId, { mode: event.target.checked ? 'save' : 'once' }, match.descriptor.label || '自定义字段')} />保存到我的资料</label>
@@ -148,6 +149,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
       })}</div>}
     </section>)}</div>
     {message && <p className="notice" role="status">{message}</p>}
-    <div className="sticky-action-bar"><div><strong>已选择 {confirmed.length} 项</strong><span>{mustPreview ? '有待确认项，请先预览' : '可直接填写'}</span></div><div className="sticky-buttons"><button type="button" className="secondary-button" disabled={confirmed.length === 0} onClick={() => void openPreview()}>完整预览</button><button type="button" className="primary-button" disabled={confirmed.length === 0} onClick={() => mustPreview ? void openPreview() : onFill(confirmed)}>{mustPreview ? `预览并确认 ${confirmed.length} 项` : `快速填写 ${confirmed.length} 项`}</button></div></div>
+    <p className="existing-value-safety">页面已有值默认跳过，不会被快速填写覆盖；只有你明确选择覆盖或重试时才会覆盖。</p>
+    <div className="sticky-action-bar"><div><strong>已选择 {confirmed.length} 项</strong><span>{targetActive ? (mustPreview ? '有待确认项，请先预览' : '可直接填写') : '目标页未激活，请返回已扫描招聘页'}</span></div><div className="sticky-buttons"><button type="button" className="secondary-button" disabled={confirmed.length === 0 || !targetActive} onClick={() => void openPreview()}>完整预览</button><button type="button" className="primary-button" disabled={confirmed.length === 0 || !targetActive} onClick={() => mustPreview ? void openPreview() : onFill(confirmed)}>{mustPreview ? `预览并确认 ${confirmed.length} 项` : `快速填写 ${confirmed.length} 项`}</button></div></div>
   </>;
 }

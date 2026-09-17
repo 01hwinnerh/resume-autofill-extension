@@ -150,3 +150,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .field-preparation-hint { margin:7px 0 0; padding:6px 8px; border-radius:7px; background:#f2f7ff; color:#486889; font-size:10px; }
 .new-fields-alert span { display:grid; }.new-fields-alert span strong { font-size:12px; }.new-fields-alert span small { margin-top:1px; color:#3975af; font-size:10px; font-weight:400; }
+.target-suspended { display:grid; gap:3px; margin-top:10px; padding:11px 12px; border-color:#b8cff0; background:#f2f7ff; color:#285d99; }
+.target-suspended span, .existing-value-safety { color:#58728f; font-size:11px; }
+.existing-value-safety { margin:10px 2px 74px; padding:9px 10px; border-radius:9px; background:#eef5ff; }

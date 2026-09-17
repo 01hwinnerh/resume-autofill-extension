@@ -4,13 +4,14 @@ import type { ConfirmedFill } from '../../src/shared/messages';
 import { failureFeedback } from '../../src/ui/fill-feedback';
 import { fieldDisplayLabel } from '../../src/ui/field-match-view';
 
-export function FillResultPanel({ result, fields, summary, onRetry, onLocate, onRescan }: {
+export function FillResultPanel({ result, fields, summary, onRetry, onLocate, onRescan, targetActive = true }: {
   result: ScanResult;
   fields: ConfirmedFill[];
   summary: FillSummary;
   onRetry: (fields: ConfirmedFill[]) => void;
   onLocate: (fieldId: string) => void;
   onRescan: () => void;
+  targetActive?: boolean;
 }) {
   const failedIds = new Set(summary.failed.map((item) => item.fieldId));
   const retryFields = fields.filter((field) => failedIds.has(field.fieldId)).map((field) => ({ ...field, overwrite: true }));
@@ -28,10 +29,10 @@ export function FillResultPanel({ result, fields, summary, onRetry, onLocate, on
         const feedback = failureFeedback(failure.reason);
         return <div className={`failed-field-item failure-${feedback.category}`} key={failure.fieldId}>
           <span><strong>{match ? fieldDisplayLabel(match) : '未知字段'}</strong><small>{feedback.title}</small><em>{feedback.action}</em></span>
-          <button type="button" className="secondary-button" onClick={() => onLocate(failure.fieldId)}>定位</button>
+          <button type="button" className="secondary-button" disabled={!targetActive} onClick={() => onLocate(failure.fieldId)}>定位</button>
         </div>;
       })}
-      <button type="button" disabled={!retryFields.length} onClick={() => onRetry(retryFields)}>仅重试失败项</button>
+      <button type="button" disabled={!retryFields.length || !targetActive} onClick={() => onRetry(retryFields)}>仅重试失败项</button>
     </div>}
   </section>;
 }

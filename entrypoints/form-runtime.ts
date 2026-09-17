@@ -4,9 +4,10 @@ import { verifyField } from '../src/filling/verify-field';
 import { highlightField } from '../src/form-engine/focus-field';
 import { openScanRoots, scanDocument, toDescriptor } from '../src/form-engine/scanner';
 import type { RuntimePageField } from '../src/form-engine/runtime-types';
+import { createPreviewOverlay, mutationTouchesPreviewOverlay } from '../src/runtime/preview-overlay';
 import { extractApplicationMetadata } from '../src/runtime/application-identity';
 import { createRuntimeError } from '../src/runtime/runtime-errors';
-import type { ConfirmedFill, PageMessage, PageResponse } from '../src/shared/messages';
+import type { ConfirmedFill, ContentPageMessage, PageMessage, PageResponse } from '../src/shared/messages';
 import { browser } from 'wxt/browser';
 
 const installedKey = '__resumeAutofillFormRuntimeInstalled';
@@ -43,7 +44,7 @@ export default defineUnlistedScript(() => {
     sessionObserver?.disconnect();
     if (mutationTimer !== undefined) clearTimeout(mutationTimer);
     sessionObserver = new MutationObserver((records) => {
-      const relevant = records.some((record) => record.type === 'attributes'
+      const relevant = records.filter((record) => !mutationTouchesPreviewOverlay(record)).some((record) => record.type === 'attributes'
         || Array.from(record.addedNodes).some((node) => node.nodeType === Node.ELEMENT_NODE
           && ((node as Element).matches('input,textarea,select,iframe,frame')
             || Boolean((node as Element).querySelector('input,textarea,select,iframe,frame'))
@@ -134,9 +135,22 @@ export default defineUnlistedScript(() => {
     return { type: 'focus-result', requestId: message.requestId, fieldId: message.fieldId, focused: true };
   }
 
-  browser.runtime.onMessage.addListener((message: PageMessage) => {
+  browser.runtime.onMessage.addListener((message: ContentPageMessage) => {
     if (message.type === 'scan-page') return Promise.resolve(scan(message.requestId, message.namespace, message.scanToken));
     if (message.type === 'focus-field') return Promise.resolve(focusField(message));
+    if (message.type === 'open-preview-overlay') {
+      const allowedUrl = new URL((browser.runtime as typeof browser.runtime & { getURL(value: string): string }).getURL('preview.html'));
+      const requestedUrl = new URL(message.previewUrl);
+      if (requestedUrl.protocol !== allowedUrl.protocol
+        || requestedUrl.host !== allowedUrl.host
+        || requestedUrl.pathname !== allowedUrl.pathname
+        || requestedUrl.searchParams.get('embedded') !== '1'
+        || requestedUrl.searchParams.get('id') !== message.sessionId) {
+        return Promise.reject(new Error('Invalid embedded preview URL'));
+      }
+      createPreviewOverlay({ document, sessionId: message.sessionId, previewUrl: requestedUrl.href });
+      return Promise.resolve({ type: 'preview-overlay-opened' as const, sessionId: message.sessionId });
+    }
     return fill(message);
   });
 });

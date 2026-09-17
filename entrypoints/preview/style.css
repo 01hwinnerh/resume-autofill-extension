@@ -4,6 +4,8 @@ body { margin: 0; background: radial-gradient(circle at 90% 0, #dbeafe 0, transp
 button, input { font: inherit; }
 button { cursor: pointer; }
 .preview-shell { width: min(1440px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 110px; }
+.preview-shell.embedded { width: min(1440px, calc(100% - 32px)); padding-top: 18px; }
+.preview-shell.embedded .brand > span { display: none; }
 .preview-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
 .brand { display: flex; align-items: center; gap: 14px; }
 .brand > span { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 15px; color: white; font-size: 20px; font-weight: 800; background: linear-gradient(145deg, #1677ff, #195ecb); box-shadow: 0 10px 24px #1677ff38; }
@@ -79,3 +81,10 @@ aside small { color: #738098; }
 .comparison-row.modified { background:#f7fbff; box-shadow:inset 3px 0 #1677ff; }
 .preview-failure-item em { margin-top:2px; color:#74545f; font-size:11px; font-style:normal; }
 .preview-failure-item.failure-page { background:#f6faff; }.preview-failure-item.failure-format,.preview-failure-item.failure-option { background:#fffaf1; }
+
+.slot-warning { display:flex; gap:10px; align-items:center; margin-bottom:16px; padding:13px 16px; border:1px solid #f0c36d; border-radius:12px; color:#6f4b00; background:#fff8e7; }
+.slot-warning span { color:#795c22; }
+.save-state.saving { color:#6a7485; }
+.save-state.saved { color:#18794e; }
+.save-state.failed { color:#b42318; }
+.retry-save { margin-left:6px; padding:0; border:0; color:#b42318; background:transparent; font-size:11px; font-weight:700; text-decoration:underline; }

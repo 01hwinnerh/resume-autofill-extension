@@ -113,7 +113,7 @@ test('fills second profile records into second existing containers without addin
     { fieldId: second('公司名称', '工作经历').fieldId, profileKey: 'workExperiences.1.company', value: '第二测试公司' },
     { fieldId: second('项目名称', '项目经历').fieldId, profileKey: 'projects.1.name', value: '第二测试项目' },
   ] });
-  expect(response.results.every((result) => result.outcome.status === 'filled' && result.verification?.verified)).toBe(true);
+  expect(response.results.every((result) => result.outcome.status === 'filled' && result.verification?.verified), JSON.stringify(response.results)).toBe(true);
   await expect(page.locator('#edu2-school')).toHaveValue('第二测试大学');
   await expect(page.locator('#work2-company')).toHaveValue('第二测试公司');
   await expect(page.locator('#project2-name')).toHaveValue('第二测试项目');

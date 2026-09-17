@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigMigrationCard } from '../../../entrypoints/options/ConfigMigrationCard';
 import { createPortableConfig, stringifyPortableConfig } from '../../../src/config/portable-config';
 import { ProfileStore } from '../../../src/profile/profile-store';
-import type { UserFieldMapping } from '../../../src/shared/mapping';
+import { createMappingId, type UserFieldMapping } from '../../../src/shared/mapping';
 import type { Profile } from '../../../src/shared/profile';
 import { MappingStore } from '../../../src/storage/mapping-store';
 import type { StoragePort } from '../../../src/storage/storage-port';
@@ -15,7 +15,7 @@ const importedProfile: Profile = {
     'custom.notice': { key: 'custom.notice', label: '到岗周期', type: 'text', value: '一周', policy: 'review' },
   },
 };
-const importedMappings: UserFieldMapping[] = [{ id: 'mapping-1', scope: { kind: 'global' }, fingerprint: 'text|到岗周期', profileKey: 'custom.notice', createdAt: '2026-09-16T08:00:00.000Z' }];
+const importedMappings: UserFieldMapping[] = [{ id: createMappingId('text|到岗周期', { kind: 'global' }), scope: { kind: 'global' }, fingerprint: 'text|到岗周期', profileKey: 'custom.notice', createdAt: '2026-09-16T08:00:00.000Z' }];
 
 class MemoryStorage implements StoragePort {
   values = new Map<string, unknown>();
@@ -66,8 +66,8 @@ describe('ConfigMigrationCard', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认替换并导入' }));
 
     await waitFor(() => expect(onImported).toHaveBeenCalledWith(importedProfile));
-    expect(storage.values.get('resume-autofill.profile.v1')).toEqual(importedProfile);
-    expect(storage.values.get('resume-autofill.mappings.v1')).toEqual({ schemaVersion: 1, mappings: importedMappings });
+    expect(storage.values.get('resume-autofill.profile.v1')).toEqual({ schemaVersion: 1, revision: 1, profile: importedProfile });
+    expect(storage.values.get('resume-autofill.mappings.v1')).toEqual({ schemaVersion: 1, revision: 1, mappings: importedMappings });
     expect(screen.getByText(/导入成功：2 个资料字段、1 个自定义字段、1 条字段映射/)).toBeTruthy();
   });
 

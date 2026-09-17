@@ -14,9 +14,9 @@ const result: ScanResult = {
   }],
 };
 
-function Harness({ onFill, onPreview }: { onFill: (fields: ConfirmedFill[]) => void; onPreview: (fields: ConfirmedFill[]) => Promise<void> }) {
+function Harness({ onFill, onPreview, targetActive = true }: { onFill: (fields: ConfirmedFill[]) => void; onPreview: (fields: ConfirmedFill[]) => Promise<void>; targetActive?: boolean }) {
   const [selected, setSelected] = useState<string[]>([]);
-  return <ReviewPanel result={result} profile={{ schemaVersion: 1, fields: {} }} selected={selected} setSelected={setSelected} onFill={onFill} onPreview={onPreview} onSaveMapping={vi.fn(async () => undefined)} onLocate={vi.fn(async () => undefined)} onRescan={vi.fn(async () => undefined)} />;
+  return <ReviewPanel result={result} profile={{ schemaVersion: 1, fields: {} }} selected={selected} setSelected={setSelected} onFill={onFill} onPreview={onPreview} onSaveMapping={vi.fn(async () => undefined)} onLocate={vi.fn(async () => undefined)} onRescan={vi.fn(async () => undefined)} targetActive={targetActive} />;
 }
 
 afterEach(cleanup);
@@ -31,6 +31,26 @@ describe('ReviewPanel', () => {
     expect((screen.getByLabelText('映射作用域') as HTMLSelectElement).value).toBe('global');
     fireEvent.click(screen.getByRole('button', { name: '立即保存字段与映射' }));
     await vi.waitFor(() => expect(onSaveMapping).toHaveBeenCalledWith(expect.objectContaining({ scopeKind: 'global' })));
+  });
+
+  it('shows a manual-add warning when repeated page slots are insufficient', () => {
+    const warningResult: ScanResult = {
+      ...result,
+      repeatSectionWarnings: [{ category: 'education', profileCount: 2, pageCount: 1, message: '教育经历资料有 2 段，页面只有 1 段，请手动新增后重新扫描。' }],
+    };
+    function WarningHarness() { const [selected, setSelected] = useState<string[]>([]); return <ReviewPanel result={warningResult} profile={{ schemaVersion: 1, fields: {} }} selected={selected} setSelected={setSelected} onFill={vi.fn()} onPreview={vi.fn(async () => undefined)} onSaveMapping={vi.fn(async () => undefined)} onLocate={vi.fn(async () => undefined)} onRescan={vi.fn(async () => undefined)} />; }
+
+    render(<WarningHarness />);
+    expect(screen.getByRole('alert').textContent).toContain('页面只有 1 段，请手动新增后重新扫描');
+  });
+
+  it('disables target-page actions while another tab is active', () => {
+    render(<Harness onFill={vi.fn()} onPreview={vi.fn(async () => undefined)} targetActive={false} />);
+    fireEvent.change(screen.getByLabelText('可到岗日期本次填写值'), { target: { value: '2026-10-01' } });
+    expect((screen.getByRole('button', { name: /预览并确认 1 项/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '完整预览' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '定位页面字段' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/页面已有值默认跳过/)).toBeTruthy();
   });
 
   it('sends an unmatched safe field to the full-screen preview', async () => {

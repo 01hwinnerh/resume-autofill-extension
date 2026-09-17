@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Profile } from '../../src/shared/profile';
 import { PROFILE_FIELDS, buildProfileField } from '../../src/ui/profile-fields';
 import { ProfileValueInput } from '../../src/ui/ProfileValueInput';
 import { QUICK_PROFILE_GROUPS, experienceRecordCount, stringifyFieldValue } from '../../src/ui/profile-management';
+import { userErrorMessage } from '../../src/ui/user-error-message';
 
 export function QuickProfileEditor({ profile, onSave, onOpenFull, onPreview }: {
   profile: Profile;
@@ -12,16 +13,23 @@ export function QuickProfileEditor({ profile, onSave, onOpenFull, onPreview }: {
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  const savingRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    if (dirtyRef.current && !savingRef.current) {
+      setMessage('其他扩展页面更新了资料。你的未保存内容已保留，保存时会合并不同字段的修改。');
+      return;
+    }
     setValues(Object.fromEntries(Object.entries(profile.fields).map(([key, field]) => [key, stringifyFieldValue(field.value)])));
+    dirtyRef.current = false;
     setDirty(false);
   }, [profile]);
 
   async function save() {
-    setSaving(true); setMessage('');
+    savingRef.current = true; setSaving(true); setMessage('');
     try {
       const next: Profile = { ...profile, fields: { ...profile.fields } };
       for (const group of QUICK_PROFILE_GROUPS) for (const key of group.keys) {
@@ -32,10 +40,10 @@ export function QuickProfileEditor({ profile, onSave, onOpenFull, onPreview }: {
         else delete next.fields[key];
       }
       await onSave(next);
-      setDirty(false); setMessage('资料已保存到本机');
+      dirtyRef.current = false; setDirty(false); setMessage('资料已保存到本机');
     } catch (error) {
-      setMessage(error instanceof Error ? `保存失败：${error.message}` : '保存失败，请重试');
-    } finally { setSaving(false); }
+      setMessage(userErrorMessage(error, '资料保存失败'));
+    } finally { savingRef.current = false; setSaving(false); }
   }
 
   return (
@@ -47,7 +55,7 @@ export function QuickProfileEditor({ profile, onSave, onOpenFull, onPreview }: {
           <div className="profile-fields">{group.keys.map((key) => {
             const definition = PROFILE_FIELDS.find((item) => item.key === key);
             if (!definition) return null;
-            return <label key={key}><span>{definition.label}</span><ProfileValueInput type={definition.type} value={values[key] ?? ''} label={definition.label} onChange={(value) => { setValues((current) => ({ ...current, [key]: value })); setDirty(true); setMessage(''); }} /></label>;
+            return <label key={key}><span>{definition.label}</span><ProfileValueInput type={definition.type} value={values[key] ?? ''} label={definition.label} onChange={(value) => { setValues((current) => ({ ...current, [key]: value })); dirtyRef.current = true; setDirty(true); setMessage(''); }} /></label>;
           })}</div>
         </details>
       ))}
@@ -59,7 +67,7 @@ export function QuickProfileEditor({ profile, onSave, onOpenFull, onPreview }: {
         <button className="secondary-button" type="button" onClick={onPreview}>大屏预览资料</button>
         <button className="secondary-button" type="button" onClick={onOpenFull}>打开完整资料中心</button>
       </div>
-      <div className="inline-save"><span role="status">{saving ? '正在保存…' : message || (dirty ? '有未保存修改' : '所有修改已保存')}</span><button type="button" disabled={!dirty || saving} onClick={() => void save()}>{saving ? '保存中…' : '保存资料'}</button></div>
+      <div className="inline-save"><span role="status" aria-live="polite">{saving ? '正在保存…' : message || (dirty ? '有未保存修改' : '所有修改已保存')}</span><button type="button" disabled={!dirty || saving} onClick={() => void save()}>{saving ? '保存中…' : '保存资料'}</button></div>
     </section>
   );
 }

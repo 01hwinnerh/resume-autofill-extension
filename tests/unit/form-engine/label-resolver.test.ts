@@ -65,6 +65,16 @@ describe('label resolver', () => {
     expect(resolveLabel(document.querySelector('#work-end')!)).toBe('结束时间');
   });
 
+  it('walks from nested open shadow roots through their hosts to an outer business section', () => {
+    document.body.innerHTML = '<fieldset><legend>教育经历</legend><div id="outer-host"></div></fieldset>';
+    const outerRoot = document.querySelector('#outer-host')!.attachShadow({ mode: 'open' });
+    outerRoot.innerHTML = '<div id="inner-host"></div>';
+    const innerRoot = outerRoot.querySelector('#inner-host')!.attachShadow({ mode: 'open' });
+    innerRoot.innerHTML = '<label>院校名称<input id="shadow-school"></label>';
+
+    expect(resolveSectionLabel(innerRoot.querySelector('#shadow-school')!)).toBe('教育经历');
+  });
+
   it('uses only explicit semantic section context', () => {
     document.body.innerHTML = `
       <fieldset><legend>  基本   信息 </legend><input id="legend-field" /></fieldset>

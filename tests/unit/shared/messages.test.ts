@@ -8,7 +8,7 @@ import type {
 
 describe('message contracts', () => {
   it('exposes the page message discriminants', () => {
-    expect(MESSAGE_TYPES).toEqual(['scan-page', 'fill-fields', 'focus-field']);
+    expect(MESSAGE_TYPES).toEqual(['scan-page', 'fill-fields', 'focus-field', 'close-preview-overlay']);
   });
 
   it('keeps scan and confirmed-fill messages discriminated and serializable', () => {

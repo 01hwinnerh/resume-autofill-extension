@@ -15,6 +15,8 @@ export interface UserFieldMapping {
   scope: MappingScope | LegacyMappingScope;
   fingerprint: string;
   profileKey: string;
+  /** Repeated education/work/project section index. Missing on legacy mappings. */
+  sectionIndex?: number;
   createdAt: string;
 }
 
@@ -38,8 +40,14 @@ export function mappingScopeTarget(scope: MappingScope | LegacyMappingScope): st
   return `${normalized.host}${normalized.path}`;
 }
 
-export function createMappingId(fingerprint: string, profileKey: string, scope: MappingScope | LegacyMappingScope): string {
+export function inferMappingSectionIndex(profileKey: string): number | undefined {
+  const match = /^(?:educations|works|workExperiences|projects)\.(\d+)\./.exec(profileKey);
+  return match ? Number(match[1]) : undefined;
+}
+
+export function createMappingId(fingerprint: string, scope: MappingScope | LegacyMappingScope, sectionIndex?: number): string {
   const normalized = normalizeMappingScope(scope);
   const target = normalized.kind === 'global' ? '*' : normalized.kind === 'host' ? normalized.host : `${normalized.host}${normalized.path}`;
-  return `${normalized.kind}:${encodeURIComponent(target)}:${encodeURIComponent(fingerprint)}:${encodeURIComponent(profileKey)}`;
+  const section = sectionIndex === undefined ? '-' : String(sectionIndex);
+  return `${normalized.kind}:${encodeURIComponent(target)}:${encodeURIComponent(fingerprint)}:${section}`;
 }

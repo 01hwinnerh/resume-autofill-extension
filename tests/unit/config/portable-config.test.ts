@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPortableConfig, importPortableConfig, parsePortableConfig, stringifyPortableConfig, summarizePortableConfig } from '../../../src/config/portable-config';
 import { ProfileStore } from '../../../src/profile/profile-store';
-import type { UserFieldMapping } from '../../../src/shared/mapping';
+import { createMappingId, type UserFieldMapping } from '../../../src/shared/mapping';
 import type { Profile } from '../../../src/shared/profile';
 import { MappingStore } from '../../../src/storage/mapping-store';
 import type { StoragePort } from '../../../src/storage/storage-port';
@@ -37,7 +37,7 @@ const profile: Profile = {
 };
 
 const mappings: UserFieldMapping[] = [{
-  id: 'mapping-1',
+  id: createMappingId('text|到岗周期', { kind: 'path', host: 'jobs.example.com', path: '/apply' }),
   scope: { kind: 'path', host: 'jobs.example.com', path: '/apply' },
   fingerprint: 'text|到岗周期',
   profileKey: 'custom.noticePeriod',
@@ -98,7 +98,7 @@ describe('portable config', () => {
       },
     };
     const previousMappings: UserFieldMapping[] = [{
-      id: 'previous-mapping',
+      id: createMappingId('text|原字段', { kind: 'global' }),
       scope: { kind: 'global' },
       fingerprint: 'text|原字段',
       profileKey: 'identity.name',

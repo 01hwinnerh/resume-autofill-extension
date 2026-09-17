@@ -49,7 +49,7 @@ type SaveMappingInput = {
   scopeKind: MappingScope['kind'];
 };
 
-export function ReviewPanel({ result, profile, selected, setSelected, onFill, onPreview, onSaveMapping, onLocate, onRescan }: {
+export function ReviewPanel({ result, profile, selected, setSelected, onFill, onPreview, onSaveMapping, onLocate, onRescan, targetActive = true }: {
   result: ScanResult;
   profile: Profile;
   selected: string[];
@@ -59,6 +59,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
   onSaveMapping: (input: SaveMappingInput) => Promise<void>;
   onLocate: (fieldId: string) => Promise<void>;
   onRescan: () => Promise<void>;
+  targetActive?: boolean;
 }) {
   const [filter, setFilter] = useState<FieldFilter>('all');
   const [query, setQuery] = useState('');
@@ -120,11 +121,13 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
       <button type="button" onClick={() => void onRescan()}>重新扫描</button>
     </section>
     <StatusSummary fields={result.fields} active={filter} onFilter={setFilter} />
+    {result.frameWarnings?.map((warning) => <section className="new-fields-alert" role="status" key={warning}><span><strong>部分 iframe 已跳过</strong><small>{warning}</small></span></section>)}
+    {result.repeatSectionWarnings?.map((warning) => <section className="new-fields-alert" role="alert" key={warning.category}><span><strong>页面经历槽位不足</strong><small>{warning.message}</small></span><button type="button" onClick={() => void onRescan()}>重新扫描</button></section>)}
     <DiagnosisSummary result={result} />
     <div className="field-toolbar card">
       <input aria-label="搜索字段" placeholder="搜索页面字段或资料字段" value={query} onChange={(event) => setQuery(event.target.value)} />
       <select aria-label="状态筛选" value={filter} onChange={(event) => setFilter(event.target.value as FieldFilter)}>
-        <option value="all">全部状态</option><option value="matched">已匹配</option><option value="needs_confirmation">待确认</option><option value="skipped_existing">已有值</option><option value="unsupported">手动处理</option><option value="failed">失败</option>
+        <option value="all">全部状态</option><option value="matched">资料就绪</option><option value="needs_confirmation">待确认</option><option value="missing_profile">资料缺失</option><option value="skipped_existing">已有值</option><option value="unsupported">手动处理</option><option value="failed">失败</option>
       </select>
       <button type="button" onClick={() => setSelected(toggleVisibleSelection(selected, selectableVisible, !allVisibleSelected))}>{allVisibleSelected ? '取消当前结果' : '全选当前结果'}</button>
       <button type="button" onClick={() => setSelected(quickFillFieldIds(result.fields, profile))}>仅选择可快速填写项</button>
@@ -136,7 +139,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
         const profileKey = match.selected?.profileKey;
         const manualValue = manual[fieldId];
         return <div key={fieldId}>
-          <FieldMatchView match={match} candidateValue={profileKey ? profile.fields[profileKey]?.value : manualValue?.value} selected={selectedSet.has(fieldId)} disabled={!isSelectableField(match) && !manualValue?.value.trim()} onToggle={(id, checked) => setSelected((current) => checked ? [...new Set([...current, id])] : current.filter((item) => item !== id))} onLocate={(id) => void onLocate(id)} />
+          <FieldMatchView match={match} candidateValue={profileKey ? profile.fields[profileKey]?.value : manualValue?.value} selected={selectedSet.has(fieldId)} disabled={!isSelectableField(match) && !manualValue?.value.trim()} locateDisabled={!targetActive} onToggle={(id, checked) => setSelected((current) => checked ? [...new Set([...current, id])] : current.filter((item) => item !== id))} onLocate={(id) => void onLocate(id)} />
           {!match.selected && ['text', 'textarea'].includes(match.descriptor.kind) && <div className="inline-value-editor card-subtle">
             <label><span>本次填写值</span><input aria-label={`${match.descriptor.label}本次填写值`} type={match.descriptor.inputType === 'date' ? 'date' : match.descriptor.inputType === 'number' ? 'number' : 'text'} value={manualValue?.value ?? ''} onChange={(event) => updateManual(fieldId, { value: event.target.value }, match.descriptor.label || '自定义字段')} /></label>
             <label className="choice"><input aria-label="保存为自定义字段" type="checkbox" checked={manualValue?.mode === 'save'} onChange={(event) => updateManual(fieldId, { mode: event.target.checked ? 'save' : 'once' }, match.descriptor.label || '自定义字段')} />保存到我的资料</label>
@@ -146,6 +149,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
       })}</div>}
     </section>)}</div>
     {message && <p className="notice" role="status">{message}</p>}
-    <div className="sticky-action-bar"><div><strong>已选择 {confirmed.length} 项</strong><span>{mustPreview ? '有待确认项，请先预览' : '可直接填写'}</span></div><div className="sticky-buttons"><button type="button" className="secondary-button" disabled={confirmed.length === 0} onClick={() => void openPreview()}>完整预览</button><button type="button" className="primary-button" disabled={confirmed.length === 0} onClick={() => mustPreview ? void openPreview() : onFill(confirmed)}>{mustPreview ? `预览并确认 ${confirmed.length} 项` : `快速填写 ${confirmed.length} 项`}</button></div></div>
+    <p className="existing-value-safety">页面已有值默认跳过，不会被快速填写覆盖；只有你明确选择覆盖或重试时才会覆盖。</p>
+    <div className="sticky-action-bar"><div><strong>已选择 {confirmed.length} 项</strong><span>{targetActive ? (mustPreview ? '有待确认项，请先预览' : '可直接填写') : '目标页未激活，请返回已扫描招聘页'}</span></div><div className="sticky-buttons"><button type="button" className="secondary-button" disabled={confirmed.length === 0 || !targetActive} onClick={() => void openPreview()}>完整预览</button><button type="button" className="primary-button" disabled={confirmed.length === 0 || !targetActive} onClick={() => mustPreview ? void openPreview() : onFill(confirmed)}>{mustPreview ? `预览并确认 ${confirmed.length} 项` : `快速填写 ${confirmed.length} 项`}</button></div></div>
   </>;
 }

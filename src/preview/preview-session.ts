@@ -27,6 +27,7 @@ export interface FillPreviewSession {
   fields: ConfirmedFill[];
   items: FillPreviewItem[];
   profileSections: ProfilePreviewSection[];
+  repeatSectionWarnings: NonNullable<ScanResult['repeatSectionWarnings']>;
 }
 
 export interface ProfilePreviewItem {
@@ -110,6 +111,7 @@ export function buildFillPreviewSession(
     fields: confirmed,
     items,
     profileSections: buildProfilePreviewSession(profile).sections,
+    repeatSectionWarnings: scan.repeatSectionWarnings ?? [],
   };
 }
 

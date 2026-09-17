@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { fillField } from '../../../src/filling/control-filler';
 import { scanDocument, toDescriptor } from '../../../src/form-engine/scanner';
 
 const context = {
@@ -150,6 +151,64 @@ describe('scanDocument', () => {
       <section hidden><label>期望职位<input name="role" /></label></section>`;
 
     expect(scanDocument(document, context).map((field) => field.label)).toEqual(['姓名']);
+  });
+
+  it('recognizes conservative repeated div items and keeps their semantic degree labels', () => {
+    document.body.innerHTML = `
+      <section class="education-list"><h2>教育经历</h2>
+        <div class="education-item" data-testid="education-item-0"><h3>本科 / Bachelor</h3><label>学校<input name="school" /></label><label>专业<input name="major" /></label><button>删除</button></div>
+        <div class="education-item" data-testid="education-item-1"><h3>硕士 / Master</h3><label>学校<input name="school" /></label><label>专业<input name="major" /></label><button>删除</button></div>
+      </section>`;
+
+    const fields = scanDocument(document, context);
+    expect(fields.map((field) => field.sectionIndex)).toEqual([0, 0, 1, 1]);
+    expect(fields.map((field) => field.sectionLabel)).toEqual(['本科 / bachelor', '本科 / bachelor', '硕士 / master', '硕士 / master']);
+    expect(fields.every((field) => field.semanticSource?.startsWith('div-repeat'))).toBe(true);
+  });
+
+  it('does not classify an ordinary non-repeated div as an experience record', () => {
+    document.body.innerHTML = `
+      <div class="education-form"><h2>教育经历</h2>
+        <div class="form-row" data-testid="education-form-row" data-automation-id="education-editor"><label>学校<input name="school" /></label><label>专业<input name="major" /></label></div>
+      </div>`;
+
+    expect(scanDocument(document, context).map((field) => field.sectionIndex)).toEqual([undefined, undefined]);
+  });
+
+  it('keeps section indexes stable for disconnected containers in separate shadow trees', () => {
+    document.body.innerHTML = '<div id="first-host"></div><div id="second-host"></div>';
+    const firstRoot = document.querySelector('#first-host')!.attachShadow({ mode: 'open' });
+    const secondRoot = document.querySelector('#second-host')!.attachShadow({ mode: 'open' });
+    firstRoot.innerHTML = '<fieldset><legend>教育经历</legend><label>学校<input id="first-school"></label></fieldset>';
+    secondRoot.innerHTML = '<fieldset><legend>教育经历</legend><label>学校<input id="second-school"></label></fieldset>';
+    const firstContainer = firstRoot.querySelector('fieldset')!;
+    const secondContainer = secondRoot.querySelector('fieldset')!;
+    expect(firstContainer.compareDocumentPosition(secondContainer) & Node.DOCUMENT_POSITION_DISCONNECTED).not.toBe(0);
+
+    const snapshot = () => scanDocument(document, context).map((field) => [field.htmlId, field.sectionIndex]);
+
+    expect(snapshot()).toEqual([['first-school', 0], ['second-school', 1]]);
+    expect(snapshot()).toEqual([['first-school', 0], ['second-school', 1]]);
+  });
+
+  it('recursively scans and fills open shadow roots once while safely ignoring closed roots', async () => {
+    document.body.innerHTML = '<div id="open-host"></div><div id="closed-host"></div>';
+    const openRoot = document.querySelector('#open-host')!.attachShadow({ mode: 'open' });
+    openRoot.innerHTML = '<label for="shadow-name">中文姓名</label><input id="shadow-name"><div id="nested-host"></div>';
+    const nestedRoot = openRoot.querySelector('#nested-host')!.attachShadow({ mode: 'open' });
+    nestedRoot.innerHTML = '<label>工作单位<input id="shadow-company"></label>';
+    const closedRoot = document.querySelector('#closed-host')!.attachShadow({ mode: 'closed' });
+    closedRoot.innerHTML = '<label>不可访问字段<input id="closed-field"></label>';
+
+    const fields = scanDocument(document, context);
+
+    expect(fields.map((field) => field.label)).toEqual(['中文姓名', '工作单位']);
+    expect(new Set(fields.flatMap((field) => field.elements)).size).toBe(2);
+    await expect(fillField(fields[0], '张三', { confirmed: true, overwrite: false })).resolves.toMatchObject({ status: 'filled' });
+    await expect(fillField(fields[1], '示例公司', { confirmed: true, overwrite: false })).resolves.toMatchObject({ status: 'filled' });
+    expect(openRoot.querySelector<HTMLInputElement>('#shadow-name')?.value).toBe('张三');
+    expect(nestedRoot.querySelector<HTMLInputElement>('#shadow-company')?.value).toBe('示例公司');
+    expect(closedRoot.querySelector<HTMLInputElement>('#closed-field')?.value).toBe('');
   });
 
   it('converts runtime fields into serializable descriptors without DOM handles', () => {

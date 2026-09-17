@@ -84,6 +84,59 @@ describe('matchFields', () => {
     expect(matches[0].status).toBe('matched');
   });
 
+  it('treats the common Chinese label 手机 as an exact phone alias', () => {
+    const [match] = matchFields(
+      [descriptor({ label: '手机', name: 'phone' })],
+      profileWith('contact.phone', 'phone-test-value'),
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected?.profileKey).toBe('contact.phone');
+    expect(match.selected?.score).toBeGreaterThan(0.5);
+    expect(match.status).toBe('matched');
+  });
+
+  it.each([
+    ['中文姓名', 'identity.name', undefined],
+    ['姓名（中文）', 'identity.name', undefined],
+    ['所在地', 'location.current', undefined],
+    ['现所在地', 'location.current', undefined],
+    ['目前所在地', 'location.current', undefined],
+    ['当前所在城市', 'location.current', undefined],
+    ['工作所在地', 'location.current', undefined],
+    ['毕业学校', 'educations.0.school', '教育经历'],
+    ['毕业院校', 'educations.0.school', '教育经历'],
+    ['就读院校', 'educations.0.school', '教育经历'],
+    ['院校名称', 'educations.0.school', '教育经历'],
+    ['最高学历', 'educations.0.degree', '教育经历'],
+    ['学历层次', 'educations.0.degree', '教育经历'],
+    ['公司', 'workExperiences.0.company', '工作经历'],
+    ['单位名称', 'workExperiences.0.company', '工作经历'],
+    ['工作单位', 'workExperiences.0.company', '工作经历'],
+    ['职位', 'workExperiences.0.title', '工作经历'],
+    ['岗位', 'workExperiences.0.title', '工作经历'],
+    ['工作岗位', 'workExperiences.0.title', '工作经历'],
+  ] as const)('matches the low-ambiguity Chinese alias %s', (label, profileKey, sectionLabel) => {
+    const [match] = matchFields(
+      [descriptor({ label, sectionLabel, sectionIndex: sectionLabel ? 0 : undefined })],
+      profileWith(profileKey, 'test-value'),
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected?.profileKey).toBe(profileKey);
+    expect(match.status).toBe('matched');
+  });
+
+  it('keeps 学历类型 mapped to degreeType rather than the broader degree field', () => {
+    const [match] = matchFields(
+      [descriptor({ label: '学历类型', sectionLabel: '教育经历', sectionIndex: 0 })],
+      profileWith('educations.0.degreeType', '全日制'),
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected?.profileKey).toBe('educations.0.degreeType');
+  });
+
   it('requires confirmation for an ambiguous location label', () => {
     const [match] = matchFields(
       [descriptor({ label: 'Location' })],
@@ -181,6 +234,61 @@ describe('matchFields', () => {
       source: 'user',
     });
     expect(match.status).toBe('matched');
+  });
+
+  it('does not reuse an identical fingerprint across repeated section indexes', () => {
+    const fields = [
+      descriptor({ fieldId: 'school-0', label: '学校', fingerprint: 'text|school', sectionIndex: 0 }),
+      descriptor({ fieldId: 'school-1', label: '学校', fingerprint: 'text|school', sectionIndex: 1 }),
+    ];
+    const profile: Profile = { schemaVersion: 1, fields: {
+      ...profileWith('educations.0.school', 'A').fields,
+      ...profileWith('educations.1.school', 'B').fields,
+    } };
+    const mappings: UserFieldMapping[] = [
+      { id: 'legacy-0', scope: { host: 'example.test' }, fingerprint: 'text|school', profileKey: 'educations.0.school', createdAt: '2026-09-14T00:00:00.000Z' },
+      { id: 'current-1', scope: { host: 'example.test' }, fingerprint: 'text|school', profileKey: 'educations.1.school', sectionIndex: 1, createdAt: '2026-09-14T00:00:00.000Z' },
+    ];
+
+    const matches = matchFields(fields, profile, { mappings, pageContext: { host: 'example.test', path: '/apply' } });
+
+    expect(matches.map((match) => match.selected?.profileKey)).toEqual(['educations.0.school', 'educations.1.school']);
+    expect(matches.map((match) => match.selected?.source)).toEqual(['user', 'user']);
+  });
+
+  it('maps an education section as a unit by explicit degree-level semantics', () => {
+    const profile: Profile = { schemaVersion: 1, fields: {
+      'educations.0.school': { key: 'educations.0.school', label: '学校', type: 'text', value: '硕士大学', policy: 'auto' },
+      'educations.0.major': { key: 'educations.0.major', label: '专业', type: 'text', value: '硕士专业', policy: 'auto' },
+      'educations.0.degree': { key: 'educations.0.degree', label: '学历', type: 'enum', value: '硕士研究生', policy: 'auto' },
+      'educations.1.school': { key: 'educations.1.school', label: '学校', type: 'text', value: '本科大学', policy: 'auto' },
+      'educations.1.major': { key: 'educations.1.major', label: '专业', type: 'text', value: '本科专业', policy: 'auto' },
+      'educations.1.degree': { key: 'educations.1.degree', label: '学历', type: 'enum', value: 'Bachelor', policy: 'auto' },
+    } };
+    const fields = [
+      descriptor({ fieldId: 'b-school', label: '学校', sectionLabel: '本科 / Bachelor', semanticSource: 'div-repeat:education:本科', sectionIndex: 0 }),
+      descriptor({ fieldId: 'b-major', label: '专业', sectionLabel: '本科 / Bachelor', semanticSource: 'div-repeat:education:本科', sectionIndex: 0 }),
+      descriptor({ fieldId: 'm-school', label: '学校', sectionLabel: '硕士 / Master', semanticSource: 'div-repeat:education:硕士', sectionIndex: 1 }),
+    ];
+
+    const matches = matchFields(fields, profile, { mappings: [], pageContext: { host: 'job.test', path: '/' } });
+    expect(matches.map((match) => match.selected?.profileKey)).toEqual([
+      'educations.1.school', 'educations.1.major', 'educations.0.school',
+    ]);
+  });
+
+  it('keeps education records in section order when no degree level is present', () => {
+    const profile: Profile = { schemaVersion: 1, fields: {
+      'educations.0.school': { key: 'educations.0.school', label: '学校', type: 'text', value: '第一大学', policy: 'auto' },
+      'educations.1.school': { key: 'educations.1.school', label: '学校', type: 'text', value: '第二大学', policy: 'auto' },
+    } };
+    const fields = [
+      descriptor({ fieldId: 'school-0', label: '学校', sectionLabel: '教育经历', sectionIndex: 0 }),
+      descriptor({ fieldId: 'school-1', label: '学校', sectionLabel: '教育经历', sectionIndex: 1 }),
+    ];
+
+    expect(matchFields(fields, profile, { mappings: [], pageContext: { host: 'job.test', path: '/' } }).map((match) => match.selected?.profileKey))
+      .toEqual(['educations.0.school', 'educations.1.school']);
   });
 
   it('does not let an explicit user mapping bypass never policy', () => {

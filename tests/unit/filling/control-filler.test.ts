@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { selectComboboxOption } from '../../../src/filling/combobox-control';
 import { fillField } from '../../../src/filling/control-filler';
 import type { RuntimePageField } from '../../../src/form-engine/runtime-types';
 import type { PageFieldKind } from '../../../src/shared/form';
@@ -64,6 +65,7 @@ describe('fillField', () => {
     await expect(fillField(field, '本科', { overwrite: false, confirmed: true }))
       .resolves.toEqual({ status: 'failed', fieldId: 'field-1', reason: 'combobox option match is ambiguous' });
     expect(clicks).toHaveLength(0);
+    expect((field.elements[0] as HTMLInputElement).value).toBe('');
   });
 
   it.each([
@@ -218,5 +220,104 @@ describe('fillField', () => {
 
     expect(element.value).toBe('');
     expect(events).toEqual([]);
+  });
+
+  it.each([
+    ['YYYY-MM', 'YYYY-MM', '2026-09-17', '2026-09'],
+    ['MM/YYYY', 'MM/YYYY', '2026-09', '09/2026'],
+    ['MM-YYYY', 'MM-YYYY', '2026年9月', '09-2026'],
+    ['YYYY.MM', 'YYYY.MM', '09/2026', '2026.09'],
+    ['YYYY年MM月', 'YYYY年MM月', '2026.9', '2026年09月'],
+    ['YYYY.MM.DD', 'YYYY.MM.DD', '09/17/2026', '2026.09.17'],
+    ['YYYY/MM/DD', 'YYYY/MM/DD', '2026-09-17', '2026/09/17'],
+    ['MM/DD/YYYY', 'MM/DD/YYYY', '2026.9.17', '09/17/2026'],
+  ])('converts profile dates to %s text controls', async (_name, placeholder, value, expected) => {
+    const field = fieldFor(`<input placeholder="${placeholder}">`, 'text');
+    await expect(fillField(field, value, { overwrite: false, confirmed: true })).resolves.toMatchObject({ status: 'filled' });
+    expect((field.elements[0] as HTMLInputElement).value).toBe(expected);
+  });
+
+  it('allows present status only in text controls and rejects it for native month', async () => {
+    await expect(fillField(fieldFor('<input placeholder="YYYY年MM月">', 'text'), '至今', { overwrite: false, confirmed: true }))
+      .resolves.toMatchObject({ status: 'filled' });
+    await expect(fillField(fieldFor('<input type="month">', 'text'), '至今', { overwrite: false, confirmed: true }))
+      .resolves.toMatchObject({ status: 'failed' });
+  });
+
+  it('waits for a slow body portal combobox and cleans up after an exact match', async () => {
+    const field = fieldFor('<input id="degree" type="search" role="combobox">', 'combobox');
+    const control = field.elements[0] as HTMLInputElement;
+    control.addEventListener('click', () => setTimeout(() => {
+      const portal = document.createElement('div');
+      portal.setAttribute('role', 'listbox');
+      portal.innerHTML = '<button role="option">本科</button>';
+      portal.querySelector('button')!.addEventListener('click', () => control.setAttribute('aria-valuetext', '本科'));
+      document.body.append(portal);
+    }, 80), { once: true });
+
+    await expect(fillField(field, '本科', { overwrite: false, confirmed: true })).resolves.toMatchObject({ status: 'filled' });
+  });
+
+  it('does not invent a day when a native date receives only year and month', async () => {
+    const field = fieldFor('<input type="date">', 'text');
+    await expect(fillField(field, '2026-09', { overwrite: false, confirmed: true })).resolves.toEqual({
+      status: 'failed',
+      fieldId: 'field-1',
+      reason: '原值仅包含年月，原生日期控件需要具体日期（YYYY-MM-DD），请确认“日”后重试。',
+    });
+    expect((field.elements[0] as HTMLInputElement).value).toBe('');
+  });
+
+  it('cleans the combobox observer and timeout when bounded waiting expires', async () => {
+    vi.useFakeTimers();
+    const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    try {
+      document.body.innerHTML = '<input type="search" role="combobox">';
+      const control = document.querySelector<HTMLInputElement>('input')!;
+      const selection = selectComboboxOption(control, '不存在', { timeoutMs: 800 });
+      await vi.advanceTimersByTimeAsync(800);
+      await expect(selection).resolves.toEqual({ selected: false, reason: 'combobox has no exact option match' });
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+      expect(control.value).toBe('');
+    } finally {
+      clearTimeoutSpy.mockRestore();
+      disconnect.mockRestore();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('fills a normal email input successfully', async () => {
+    const field = fieldFor('<input type="email" autocomplete="email">', 'text');
+    await expect(fillField(field, 'candidate@example.test', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect((field.elements[0] as HTMLInputElement).value).toBe('candidate@example.test');
+  });
+
+  it('retries one controlled text rollback once and succeeds after the framework catches up', async () => {
+    const field = fieldFor('<input type="email">', 'text');
+    const control = field.elements[0] as HTMLInputElement;
+    const input = vi.fn();
+    let blurCount = 0;
+    control.addEventListener('input', input);
+    control.addEventListener('blur', () => { if (++blurCount === 1) control.value = ''; });
+
+    await expect(fillField(field, 'candidate@example.test', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect(input).toHaveBeenCalledTimes(2);
+    expect(blurCount).toBe(2);
+  });
+
+  it('does not report success when blur validation rolls a controlled value back', async () => {
+    const field = fieldFor('<input>', 'text');
+    const control = field.elements[0] as HTMLInputElement;
+    const input = vi.fn();
+    control.addEventListener('input', input);
+    control.addEventListener('blur', () => { control.value = ''; });
+    await expect(fillField(field, 'Lin', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'failed', fieldId: 'field-1', reason: 'current value does not match expected value' });
+    expect(input).toHaveBeenCalledTimes(2);
   });
 });

@@ -6,6 +6,7 @@ import { StorageError } from '../../../src/storage/storage-port';
 
 class MemoryStorage implements StoragePort {
   private readonly values = new Map<string, unknown>();
+  private readonly listeners = new Map<string, Set<(value: unknown) => void>>();
 
   async get<T>(key: string): Promise<T | undefined> {
     return this.values.get(key) as T | undefined;
@@ -13,6 +14,20 @@ class MemoryStorage implements StoragePort {
 
   async set<T>(key: string, value: T): Promise<void> {
     this.values.set(key, value);
+    this.listeners.get(key)?.forEach((listener) => listener(value));
+  }
+
+  async compareAndSet<T>(key: string, expectedRevision: number, value: T): Promise<boolean> {
+    const current = this.values.get(key) as { revision?: number } | undefined;
+    if ((current?.revision ?? 0) !== expectedRevision) return false;
+    await this.set(key, value);
+    return true;
+  }
+
+  subscribe<T>(key: string, listener: (value: T | undefined) => void): () => void {
+    const listeners = this.listeners.get(key) ?? new Set();
+    listeners.add(listener as (value: unknown) => void); this.listeners.set(key, listeners);
+    return () => listeners.delete(listener as (value: unknown) => void);
   }
 }
 
@@ -50,12 +65,48 @@ describe('ProfileStore', () => {
     expect((await store.load()).fields).toMatchObject({ name: { value: '新姓名' }, city: { value: '新城市' } });
   });
 
-  it('falls back when the persisted profile has an invalid schema version', async () => {
+  it('preserves changes from two store instances that update different fields concurrently', async () => {
     const storage = new MemoryStorage();
-    await storage.set('resume-autofill.profile.v1', { schemaVersion: 2, fields: {} });
-    const store = new ProfileStore(storage);
+    const first = new ProfileStore(storage); const second = new ProfileStore(storage);
+    await first.save({ schemaVersion: 1, fields: {
+      name: { key: 'name', label: '姓名', type: 'text', value: '原姓名', policy: 'auto' },
+      city: { key: 'city', label: '城市', type: 'text', value: '原城市', policy: 'auto' },
+    } });
+    await Promise.all([
+      first.update((profile) => ({ ...profile, fields: { ...profile.fields, name: { ...profile.fields.name, value: '新姓名' } } })),
+      second.update((profile) => ({ ...profile, fields: { ...profile.fields, city: { ...profile.fields.city, value: '新城市' } } })),
+    ]);
+    expect((await first.load()).fields).toMatchObject({ name: { value: '新姓名' }, city: { value: '新城市' } });
+  });
 
-    await expect(store.load()).resolves.toEqual({ schemaVersion: 1, fields: {} });
+  it('merges concurrent snapshot saves from two loaded store instances by changed field', async () => {
+    const storage = new MemoryStorage(); const seed = new ProfileStore(storage);
+    await seed.save({ schemaVersion: 1, fields: {
+      name: { key: 'name', label: '姓名', type: 'text', value: '原姓名', policy: 'auto' },
+      city: { key: 'city', label: '城市', type: 'text', value: '原城市', policy: 'auto' },
+    } });
+    const first = new ProfileStore(storage); const second = new ProfileStore(storage);
+    const [firstSnapshot, secondSnapshot] = await Promise.all([first.load(), second.load()]);
+    firstSnapshot.fields.name = { ...firstSnapshot.fields.name, value: '新姓名' };
+    secondSnapshot.fields.city = { ...secondSnapshot.fields.city, value: '新城市' };
+    await Promise.all([first.save(firstSnapshot), second.save(secondSnapshot)]);
+    expect((await seed.load()).fields).toMatchObject({ name: { value: '新姓名' }, city: { value: '新城市' } });
+  });
+
+  it('notifies subscribers when another store writes without changing the public profile schema', async () => {
+    const storage = new MemoryStorage(); const first = new ProfileStore(storage); const second = new ProfileStore(storage);
+    const changes: Profile[] = []; const unsubscribe = first.subscribe((profile) => changes.push(profile));
+    await second.save({ schemaVersion: 1, fields: {} }); unsubscribe();
+    expect(changes).toEqual([{ schemaVersion: 1, fields: {} }]);
+  });
+
+  it('rejects a future schema version and does not overwrite it', async () => {
+    const storage = new MemoryStorage(); const future = { schemaVersion: 2, revision: 4, fields: {} };
+    await storage.set('resume-autofill.profile.v1', future);
+    const store = new ProfileStore(storage);
+    await expect(store.load()).rejects.toThrow(/较新版本.*升级扩展/);
+    await expect(store.save({ schemaVersion: 1, fields: {} })).rejects.toThrow(/较新版本.*数据未被修改/);
+    expect(await storage.get('resume-autofill.profile.v1')).toEqual(future);
   });
 
   it('falls back when a persisted profile field is malformed', async () => {

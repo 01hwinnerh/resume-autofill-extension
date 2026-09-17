@@ -4,6 +4,7 @@ import { buildFillPreviewSession, buildProfilePreviewSession, previewStorageKey 
 import type { NewApplicationRecord } from '../../src/shared/application-record';
 import { ProfileStore } from '../../src/profile/profile-store';
 import { inferApplicationIdentity } from '../../src/runtime/application-identity';
+import { openPreviewInTargetTab, targetTabState } from '../../src/runtime/preview-target';
 import type { FillSummary } from '../../src/runtime/application-controller';
 import type { ScanTarget } from '../../src/runtime/scan-session';
 import type { ScanPageInfo } from '../../src/shared/form';
@@ -17,6 +18,7 @@ import { defaultSelectedFieldIds } from '../../src/ui/field-selection';
 import { emptyProfile } from '../../src/ui/profile-fields';
 import { parseFieldValue, profileCompletion } from '../../src/ui/profile-management';
 import { reducePanel } from '../../src/ui/panel-state';
+import { runtimeErrorMessage, userErrorMessage } from '../../src/ui/user-error-message';
 import { ApplicationRecordPrompt, type ApplicationDraft } from './ApplicationRecordPrompt';
 import { CustomFieldsManager } from './CustomFieldsManager';
 import { FillResultPanel } from './FillResultPanel';
@@ -43,6 +45,11 @@ function extensionUrl(path: string): string {
   return (browser.runtime as typeof browser.runtime & { getURL(value: string): string }).getURL(path);
 }
 
+function isSessionInvalidation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error
+    && (error as { code?: unknown }).code === 'FIELD_OPERATION_FAILED';
+}
+
 async function currentPageTarget(): Promise<Omit<ScanTarget, 'scannedAt'>> {
   const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
   if (tab?.id === undefined || !tab.url || !/^https?:/i.test(tab.url)) {
@@ -61,8 +68,9 @@ export default function App() {
   const [lastApplication, setLastApplication] = useState<ApplicationDraft>();
   const [manualApplication, setManualApplication] = useState<ApplicationDraft>();
   const [newFieldCount, setNewFieldCount] = useState(0);
+  const [targetActive, setTargetActive] = useState(false);
   const completion = profileCompletion(profile);
-  const scanResult = state.kind === 'review' || state.kind === 'filling' || state.kind === 'result' ? state.result : undefined;
+  const scanResult = state.kind === 'review' || state.kind === 'invalidated' || state.kind === 'filling' || state.kind === 'result' ? state.result : undefined;
   const activeTarget = scanResult?.target;
 
   useEffect(() => {
@@ -70,29 +78,49 @@ export default function App() {
       setProfile(loadedProfile);
       setMappings(loadedMappings);
     });
+    const unsubscribeProfile = profileStore.subscribe((loadedProfile) => setProfile(loadedProfile));
+    const unsubscribeMappings = mappingStore.subscribe((loadedMappings) => setMappings(loadedMappings));
+    return () => { unsubscribeProfile(); unsubscribeMappings(); };
   }, []);
 
   useEffect(() => {
-    if (!activeTarget) return undefined;
+    if (!activeTarget) { setTargetActive(false); return undefined; }
+    let disposed = false;
     const invalidate = (message: string) => {
       setSelected([]);
+      setTargetActive(false);
       setNotice(message);
-      dispatch({ type: 'scan_failed', message });
+      dispatch({ type: 'scan_invalidated', message });
+    };
+    const refreshTargetState = async (tabId: number) => {
+      if (tabId !== activeTarget.tabId) { if (!disposed) setTargetActive(false); return; }
+      try {
+        const tab = await browser.tabs.get(tabId);
+        const status = targetTabState(activeTarget, tab);
+        if (disposed) return;
+        if (status === 'invalidated') invalidate('页面已变化，请重新扫描');
+        else setTargetActive(status === 'active');
+      } catch {
+        if (!disposed) invalidate('目标招聘页已关闭或不可访问，请重新扫描');
+      }
     };
     const onActivated = (info: { tabId: number; windowId: number }) => {
       if (activeTarget.windowId !== undefined && info.windowId !== activeTarget.windowId) return;
-      if (info.tabId === activeTarget.tabId) return;
-      void browser.tabs.get(info.tabId).then((tab) => {
-        if (tab.url?.startsWith(extensionUrl(''))) return;
-        invalidate('页面已切换，请重新扫描');
-      });
+      void refreshTargetState(info.tabId);
     };
     const onUpdated = (tabId: number, change: { url?: string }) => {
-      if (tabId === activeTarget.tabId && change.url && change.url !== activeTarget.url) invalidate('当前页面地址已变化，请重新扫描。');
+      if (tabId === activeTarget.tabId && change.url && change.url !== activeTarget.url) invalidate('页面已变化，请重新扫描');
     };
+    void browser.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => {
+      if (disposed) return;
+      const status = targetTabState(activeTarget, tab ?? {});
+      if (status === 'invalidated') invalidate('页面已变化，请重新扫描');
+      else setTargetActive(status === 'active');
+    });
     browser.tabs.onActivated.addListener(onActivated);
     browser.tabs.onUpdated.addListener(onUpdated);
     return () => {
+      disposed = true;
       browser.tabs.onActivated.removeListener(onActivated);
       browser.tabs.onUpdated.removeListener(onUpdated);
     };
@@ -105,6 +133,13 @@ export default function App() {
       if (change.type !== 'page-fields-changed'
         || sender.tab?.id !== activeTarget.tabId
         || typeof change.newFieldCount !== 'number') return;
+      if (change.sessionInvalidated) {
+        const message = '页面已变化，请重新扫描';
+        setSelected([]);
+        setNotice(message);
+        dispatch({ type: 'scan_invalidated', message });
+        return;
+      }
       setNewFieldCount(change.newFieldCount);
     };
     browser.runtime.onMessage.addListener(onFieldsChanged);
@@ -121,11 +156,12 @@ export default function App() {
       const [loadedProfile, target] = await Promise.all([profileStore.load(), currentPageTarget()]);
       setProfile(loadedProfile);
       const response = await browser.runtime.sendMessage({ type: 'scan-active-tab', target }) as RuntimeCommandResponse;
-      if (!response.ok || !('page' in response.data)) throw new Error(response.ok ? '扫描结果格式错误' : response.error.message);
+      if (!response.ok || !('page' in response.data)) throw response.ok ? new Error('invalid-scan-result') : response.error;
       setSelected(defaultSelectedFieldIds(response.data.fields));
+      setTargetActive(true);
       dispatch({ type: 'scan_succeeded', result: response.data });
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : '扫描失败';
+      const message = userErrorMessage(cause, '扫描失败');
       setNotice(message);
       dispatch({ type: 'scan_failed', message });
     }
@@ -147,7 +183,7 @@ export default function App() {
     }
     const pageUrl = new URL(state.result.page.url);
     const scope: MappingScope = input.scopeKind === 'global' ? { kind: 'global' } : input.scopeKind === 'host' ? { kind: 'host', host: state.result.page.host } : { kind: 'path', host: state.result.page.host, path: pageUrl.pathname };
-    await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, input.profileKey, scope), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, createdAt: new Date().toISOString() });
+    await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, scope, field.descriptor.sectionIndex), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, sectionIndex: field.descriptor.sectionIndex, createdAt: new Date().toISOString() });
     setMappings(await mappingStore.list());
   }
 
@@ -176,8 +212,7 @@ export default function App() {
     if (kind !== 'global' && !host) throw new Error('请先扫描目标网站，再改为网站或页面作用域');
     if (kind === 'path' && !path) throw new Error('请先扫描目标页面，再改为页面作用域');
     const scope: MappingScope = kind === 'global' ? { kind } : kind === 'host' ? { kind, host: host! } : { kind, host: host!, path: path! };
-    await mappingStore.delete(mapping.id);
-    await mappingStore.upsert({ ...mapping, id: createMappingId(mapping.fingerprint, mapping.profileKey, scope), scope });
+    await mappingStore.updateMapping(mapping.id, { ...mapping, id: createMappingId(mapping.fingerprint, scope, mapping.sectionIndex), scope });
     setMappings(await mappingStore.list());
   }
 
@@ -187,25 +222,42 @@ export default function App() {
   }
 
   async function locate(fieldId: string) {
-    if (!scanResult?.target) return;
-    const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId, target: scanResult.target }) as RuntimeCommandResponse;
-    if (!response.ok || !('focused' in response.data) || !response.data.focused) setNotice(response.ok ? '未找到页面字段，请重新扫描' : response.error.message);
+    if (!scanResult?.target || state.kind === 'invalidated' || !targetActive) {
+      if (scanResult?.target && !targetActive) setNotice('目标页未激活，请返回已扫描的招聘页后再操作。');
+      return;
+    }
+    const response = await browser.runtime.sendMessage({ type: 'close-and-focus-active-field', fieldId, target: scanResult.target }) as RuntimeCommandResponse;
+    if (!response.ok && isSessionInvalidation(response.error)) {
+      const message = '页面已变化，请重新扫描';
+      setSelected([]);
+      setNotice(message);
+      dispatch({ type: 'scan_invalidated', message });
+      return;
+    }
+    if (!response.ok || !('focused' in response.data) || !response.data.focused) setNotice(response.ok ? '页面中已找不到该字段，请重新扫描后再定位。' : runtimeErrorMessage(response.error, '定位失败'));
   }
 
   async function fill(fields: ConfirmedFill[]) {
     if (!scanResult?.target || !fields.length || (state.kind !== 'review' && state.kind !== 'result')) return;
+    if (!targetActive) { setNotice('目标页未激活，请返回已扫描的招聘页后再操作。'); return; }
     const target = scanResult.target;
     const draft = applicationDraft(scanResult.page);
     dispatch({ type: 'fill_requested', fields });
     try {
       const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target }) as RuntimeCommandResponse;
-      if (!response.ok || !('filled' in response.data)) throw new Error(response.ok ? '填写结果格式错误' : response.error.message);
+      if (!response.ok || !('filled' in response.data)) throw response.ok ? new Error('invalid-fill-result') : response.error;
       const summary = response.data as FillSummary;
       setLastApplication(draft);
       dispatch({ type: 'fill_succeeded', summary });
-      if (summary.failed.length > 0) await locate(summary.failed[0].fieldId);
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : '填写失败';
+      if (isSessionInvalidation(cause)) {
+        const message = '页面已变化，请重新扫描';
+        setSelected([]);
+        setNotice(message);
+        dispatch({ type: 'scan_invalidated', message });
+        return;
+      }
+      const message = userErrorMessage(cause, '填写失败');
       setNotice(message);
       dispatch({ type: 'scan_failed', message });
     }
@@ -213,9 +265,15 @@ export default function App() {
 
   async function openFillPreview(fields: ConfirmedFill[]) {
     if (state.kind !== 'review' || !state.result.target) throw new Error('当前扫描结果没有绑定页面，请重新扫描。');
+    if (!targetActive) throw new Error('目标页未激活，请返回已扫描的招聘页后再打开预览。');
     const session = buildFillPreviewSession(state.result, profile, fields);
     await browser.storage.session.set({ [previewStorageKey(session.id)]: session });
-    await browser.tabs.create({ url: extensionUrl(`preview.html?id=${encodeURIComponent(session.id)}`) });
+    const previewUrl = extensionUrl(`preview.html?id=${encodeURIComponent(session.id)}&embedded=1`);
+    try {
+      await openPreviewInTargetTab(browser.tabs as Parameters<typeof openPreviewInTargetTab>[0], state.result.target, session.id, previewUrl);
+    } catch {
+      throw new Error('无法在目标招聘页打开预览，请确认页面仍可访问；如页面已变化，请重新扫描。');
+    }
   }
 
   async function openProfilePreview() {
@@ -263,13 +321,15 @@ export default function App() {
     {view === 'assistant' && <>
       {state.kind === 'idle' && <section className="assistant-empty card"><div className="completion-ring" aria-label={`资料完成度 ${completion.percent}%`}>{completion.percent}%</div><div><h2>{completion.filled ? '继续完善资料并扫描页面' : '先完善基础资料'}</h2><p>{completion.filled ? `已填写 ${completion.filled}/${completion.total} 项资料` : '填写姓名、手机和邮箱后，匹配会更准确。'}</p></div><div className="completion-groups"><span>基本信息 {completion.bySection.basic.filled}/{completion.bySection.basic.total}</span><span>教育 {completion.bySection.education.filled}/{completion.bySection.education.total}</span><span>工作 {completion.bySection.work.filled}/{completion.bySection.work.total}</span></div>{!completion.filled && <button className="secondary-button" type="button" onClick={() => setView('profile')}>完善基础资料</button>}</section>}
       <section className="scan-card card"><div><strong>{scanResult ? scanResult.page.title || scanResult.page.host : '扫描当前招聘页面'}</strong><span>{scanResult ? scanResult.page.url : '仅扫描当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : scanResult ? '重新扫描' : '扫描当前页面'}</button></section>
-      {newFieldCount > 0 && <section className="new-fields-alert" role="status"><span><strong>发现 {newFieldCount} 个新字段</strong><small>页面步骤或经历区块已变化，重新扫描不会自动填写或提交。</small></span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
+      {state.kind !== 'invalidated' && newFieldCount > 0 && <section className="new-fields-alert" role="status"><span><strong>发现 {newFieldCount} 个新字段</strong><small>页面步骤或经历区块已变化，重新扫描不会自动填写或提交。</small></span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
       <section className="manual-application-card card"><strong>已经完成投递？</strong><button type="button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
       {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
-      {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} />}
+      {activeTarget && state.kind !== 'invalidated' && !targetActive && <section className="target-suspended card" role="status"><strong>目标页未激活</strong><span>扫描结果已保留。请返回已扫描的招聘页，无需重新扫描。</span></section>}
+      {state.kind === 'invalidated' && <section className="invalidated-card card" role="alert" aria-labelledby="invalidated-title"><div><h2 id="invalidated-title">页面已变化，请重新扫描</h2><p>旧扫描结果已停用，重新扫描后才能继续定位、预览或填写。</p></div><button type="button" className="primary-button" onClick={() => void scan()}>重新扫描当前页面</button></section>}
+      {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} targetActive={targetActive} />}
       {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.fields.length} 个字段…</div>}
       {state.kind === 'result' && <>
-        <FillResultPanel result={state.result} fields={state.fields} summary={state.summary} onRetry={(fields) => void fill(fields)} onLocate={(fieldId) => void locate(fieldId)} onRescan={() => void scan()} />
+        <FillResultPanel result={state.result} fields={state.fields} summary={state.summary} onRetry={(fields) => void fill(fields)} onLocate={(fieldId) => void locate(fieldId)} onRescan={() => void scan()} targetActive={targetActive} />
         {lastApplication && <ApplicationRecordPrompt draft={lastApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
       </>}
     </>}

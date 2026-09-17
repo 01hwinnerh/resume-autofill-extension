@@ -147,7 +147,7 @@ export default function App() {
     }
     const pageUrl = new URL(state.result.page.url);
     const scope: MappingScope = input.scopeKind === 'global' ? { kind: 'global' } : input.scopeKind === 'host' ? { kind: 'host', host: state.result.page.host } : { kind: 'path', host: state.result.page.host, path: pageUrl.pathname };
-    await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, input.profileKey, scope), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, createdAt: new Date().toISOString() });
+    await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, scope, field.descriptor.sectionIndex), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, sectionIndex: field.descriptor.sectionIndex, createdAt: new Date().toISOString() });
     setMappings(await mappingStore.list());
   }
 
@@ -176,8 +176,7 @@ export default function App() {
     if (kind !== 'global' && !host) throw new Error('请先扫描目标网站，再改为网站或页面作用域');
     if (kind === 'path' && !path) throw new Error('请先扫描目标页面，再改为页面作用域');
     const scope: MappingScope = kind === 'global' ? { kind } : kind === 'host' ? { kind, host: host! } : { kind, host: host!, path: path! };
-    await mappingStore.delete(mapping.id);
-    await mappingStore.upsert({ ...mapping, id: createMappingId(mapping.fingerprint, mapping.profileKey, scope), scope });
+    await mappingStore.updateMapping(mapping.id, { ...mapping, id: createMappingId(mapping.fingerprint, scope, mapping.sectionIndex), scope });
     setMappings(await mappingStore.list());
   }
 

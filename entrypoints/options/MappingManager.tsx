@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createMappingId, type MappingScope, type NormalizedUserFieldMapping } from '../../src/shared/mapping';
+import { createMappingId, inferMappingSectionIndex, type MappingScope, type NormalizedUserFieldMapping } from '../../src/shared/mapping';
 import type { Profile } from '../../src/shared/profile';
 import type { MappingStore } from '../../src/storage/mapping-store';
 import { filterMappings, mappingProfileLabel, mappingProfileOptions, mappingSiteTarget, orphanedMappings } from '../../src/ui/mapping-management';
@@ -80,7 +80,8 @@ export function MappingManager({ profile, mappingStore, refreshToken = 0 }: {
       : editScopeKind === 'host'
         ? { kind: 'host', host }
         : { kind: 'path', host, path: path.startsWith('/') ? path : `/${path}` };
-    const updated = { ...mapping, id: createMappingId(mapping.fingerprint, editProfileKey, scope), profileKey: editProfileKey, scope };
+    const sectionIndex = inferMappingSectionIndex(editProfileKey);
+    const updated = { ...mapping, id: createMappingId(mapping.fingerprint, scope, sectionIndex), profileKey: editProfileKey, scope, sectionIndex };
     setBusy(true);
     try {
       await mappingStore.updateMapping(mapping.id, updated);

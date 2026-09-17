@@ -1,5 +1,5 @@
 import type { FieldMatch, MatchCandidate, PageFieldDescriptor } from '../shared/form';
-import { normalizeMappingScope, type UserFieldMapping } from '../shared/mapping';
+import { inferMappingSectionIndex, normalizeMappingScope, type UserFieldMapping } from '../shared/mapping';
 import type { Profile, ProfileField, ProfileFieldType } from '../shared/profile';
 import { assignConfidenceStatus } from './confidence';
 import { FIELD_DICTIONARY, findDictionaryField } from './field-dictionary';
@@ -75,6 +75,11 @@ function mappingPriority(mapping: UserFieldMapping, pageContext: MatchOptions['p
   return 1;
 }
 
+function mappingMatchesSection(mapping: UserFieldMapping, descriptor: PageFieldDescriptor): boolean {
+  if (descriptor.sectionIndex === undefined) return true;
+  return (mapping.sectionIndex ?? inferMappingSectionIndex(mapping.profileKey)) === descriptor.sectionIndex;
+}
+
 function matchField(
   descriptor: PageFieldDescriptor,
   profile: Profile,
@@ -82,7 +87,7 @@ function matchField(
   pageContext: MatchOptions['pageContext'],
 ): FieldMatch {
   const mapping = mappings
-    .filter((item) => item.fingerprint === descriptor.fingerprint && mappingPriority(item, pageContext) > 0)
+    .filter((item) => item.fingerprint === descriptor.fingerprint && mappingMatchesSection(item, descriptor) && mappingPriority(item, pageContext) > 0)
     .sort((left, right) => mappingPriority(right, pageContext) - mappingPriority(left, pageContext))[0];
   const mappedField = mapping ? profile.fields[mapping.profileKey] : undefined;
   const configuredCandidates = mappedField ? [createUserCandidate(mappedField.key)] : genericCandidates(descriptor, profile);

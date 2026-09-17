@@ -17,11 +17,13 @@ const profile: Profile = {
   fields: {
     'identity.name': { key: 'identity.name', label: '姓名', type: 'text', value: '测试用户', policy: 'auto' },
     'custom.notice': { key: 'custom.notice', label: '到岗周期', type: 'text', value: '两周', policy: 'review' },
+    'educations.0.school': { key: 'educations.0.school', label: '学校 1', type: 'text', value: 'A', policy: 'auto' },
+    'educations.1.school': { key: 'educations.1.school', label: '学校 2', type: 'text', value: 'B', policy: 'auto' },
   },
 };
 
-function mapping(fingerprint: string, profileKey: string, scope: MappingScope): UserFieldMapping {
-  return { id: createMappingId(fingerprint, profileKey, scope), fingerprint, profileKey, scope, createdAt: '2026-09-16T08:00:00.000Z' };
+function mapping(fingerprint: string, profileKey: string, scope: MappingScope, sectionIndex?: number): UserFieldMapping {
+  return { id: createMappingId(fingerprint, scope, sectionIndex), fingerprint, profileKey, scope, sectionIndex, createdAt: '2026-09-16T08:00:00.000Z' };
 }
 
 async function renderManager(items: UserFieldMapping[]) {
@@ -49,7 +51,7 @@ describe('MappingManager', () => {
   });
 
   it('relinks an orphaned mapping and changes its scope', async () => {
-    const original = mapping('旧字段', 'custom.deleted', { kind: 'host', host: 'jobs.example.com' });
+    const original = mapping('旧字段', 'custom.deleted', { kind: 'host', host: 'jobs.example.com' }, 1);
     const store = await renderManager([original]);
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
     fireEvent.change(screen.getByLabelText('本地资料字段'), { target: { value: 'custom.notice' } });
@@ -60,8 +62,26 @@ describe('MappingManager', () => {
     const saved = await store.list();
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({ profileKey: 'custom.notice', scope: { kind: 'global' } });
+    expect(saved[0].sectionIndex).toBeUndefined();
     expect(saved[0].id).not.toBe(original.id);
     expect(screen.queryByText('资料字段已失效')).toBeNull();
+  });
+
+  it('recomputes sectionIndex and identity when relinking between repeated records', async () => {
+    const scope: MappingScope = { kind: 'host', host: 'jobs.example.com' };
+    const original = mapping('学校字段', 'educations.0.school', scope, 0);
+    const store = await renderManager([original]);
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.change(screen.getByLabelText('本地资料字段'), { target: { value: 'educations.1.school' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存映射' }));
+
+    await screen.findByText('字段映射已更新。');
+    expect(await store.list()).toEqual([{
+      ...original,
+      id: createMappingId(original.fingerprint, scope, 1),
+      profileKey: 'educations.1.school',
+      sectionIndex: 1,
+    }]);
   });
 
   it('selects the filtered result and deletes it only after confirmation', async () => {

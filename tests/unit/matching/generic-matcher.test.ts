@@ -183,6 +183,26 @@ describe('matchFields', () => {
     expect(match.status).toBe('matched');
   });
 
+  it('does not reuse an identical fingerprint across repeated section indexes', () => {
+    const fields = [
+      descriptor({ fieldId: 'school-0', label: '学校', fingerprint: 'text|school', sectionIndex: 0 }),
+      descriptor({ fieldId: 'school-1', label: '学校', fingerprint: 'text|school', sectionIndex: 1 }),
+    ];
+    const profile: Profile = { schemaVersion: 1, fields: {
+      ...profileWith('educations.0.school', 'A').fields,
+      ...profileWith('educations.1.school', 'B').fields,
+    } };
+    const mappings: UserFieldMapping[] = [
+      { id: 'legacy-0', scope: { host: 'example.test' }, fingerprint: 'text|school', profileKey: 'educations.0.school', createdAt: '2026-09-14T00:00:00.000Z' },
+      { id: 'current-1', scope: { host: 'example.test' }, fingerprint: 'text|school', profileKey: 'educations.1.school', sectionIndex: 1, createdAt: '2026-09-14T00:00:00.000Z' },
+    ];
+
+    const matches = matchFields(fields, profile, { mappings, pageContext: { host: 'example.test', path: '/apply' } });
+
+    expect(matches.map((match) => match.selected?.profileKey)).toEqual(['educations.0.school', 'educations.1.school']);
+    expect(matches.map((match) => match.selected?.source)).toEqual(['user', 'user']);
+  });
+
   it('does not let an explicit user mapping bypass never policy', () => {
     const field = descriptor({ label: 'Name', fingerprint: 'text|name' });
     const [match] = matchFields(

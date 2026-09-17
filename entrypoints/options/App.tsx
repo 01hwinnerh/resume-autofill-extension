@@ -4,7 +4,7 @@ import type { Profile } from '../../src/shared/profile';
 import { LocalStorage } from '../../src/storage/local-storage';
 import { MappingStore } from '../../src/storage/mapping-store';
 import { PROFILE_FIELDS, PROFILE_SECTION_LABELS, buildProfileField, emptyProfile, experienceDefinitions, profileFieldDefinitions, type ProfileSection, type RepeatableProfileSection } from '../../src/ui/profile-fields';
-import { addExperience, deleteExperience, experienceRecordCount, moveExperience, stringifyFieldValue } from '../../src/ui/profile-management';
+import { applyExperienceAction, experienceRecordCount, saveProfileWithMappingRemaps, stringifyFieldValue, type ExperienceEditorState } from '../../src/ui/profile-management';
 import { ConfigMigrationCard } from './ConfigMigrationCard';
 import { MappingManager } from './MappingManager';
 import { ProfileSectionCard } from './ProfileSectionCard';
@@ -16,21 +16,21 @@ const SECTIONS = Object.keys(PROFILE_SECTION_LABELS) as ProfileSection[];
 const REPEATABLE = new Set<ProfileSection>(['education', 'work', 'project']);
 
 export default function App() {
-  const [profile, setProfile] = useState<Profile>(emptyProfile());
-  const [counts, setCounts] = useState<Record<RepeatableProfileSection, number>>({ education: 1, work: 1, project: 1 });
+  const [editor, setEditor] = useState<ExperienceEditorState>({ profile: emptyProfile(), counts: { education: 1, work: 1, project: 1 }, pendingRemaps: [] });
+  const { profile, counts, pendingRemaps } = editor;
   const [mappingRevision, setMappingRevision] = useState(0);
   const [dirty, setDirty] = useState(false); const [saving, setSaving] = useState(false); const [message, setMessage] = useState('');
-  useEffect(() => { void profileStore.load().then((loaded) => { setProfile(loaded); setCounts({ education: Math.max(1, experienceRecordCount(loaded, 'education')), work: Math.max(1, experienceRecordCount(loaded, 'work')), project: Math.max(1, experienceRecordCount(loaded, 'project')) }); }); }, []);
+  useEffect(() => { void profileStore.load().then((loaded) => { setEditor({ profile: loaded, counts: { education: Math.max(1, experienceRecordCount(loaded, 'education')), work: Math.max(1, experienceRecordCount(loaded, 'work')), project: Math.max(1, experienceRecordCount(loaded, 'project')) }, pendingRemaps: [] }); }); }, []);
   const definitions = useMemo(() => [...PROFILE_FIELDS.filter((item) => !REPEATABLE.has(item.section)), ...(['education', 'work', 'project'] as const).flatMap((section) => Array.from({ length: counts[section] }, (_, index) => experienceDefinitions(section, index)).flat())], [counts]);
   const grouped = useMemo(() => Object.fromEntries(SECTIONS.map((section) => [section, definitions.filter((item) => item.section === section)])) as Record<ProfileSection, typeof definitions>, [definitions]);
   const values = useMemo(() => Object.fromEntries(Object.entries(profile.fields).map(([key, field]) => [key, stringifyFieldValue(field.value)])), [profile]);
-  function change(key: string, value: string) { const definition = definitions.find((item) => item.key === key); if (!definition) return; setProfile((current) => { const fields = { ...current.fields }; if (value.trim()) fields[key] = { ...buildProfileField(definition, value), policy: fields[key]?.policy ?? definition.policy }; else delete fields[key]; return { ...current, fields }; }); setDirty(true); setMessage(''); }
+  function change(key: string, value: string) { const definition = definitions.find((item) => item.key === key); if (!definition) return; setEditor((current) => { const fields = { ...current.profile.fields }; if (value.trim()) fields[key] = { ...buildProfileField(definition, value), policy: fields[key]?.policy ?? definition.policy }; else if (REPEATABLE.has(definition.section)) fields[key] = { key, label: definition.label, type: definition.type, value: null, policy: fields[key]?.policy ?? definition.policy }; else delete fields[key]; return { ...current, profile: { ...current.profile, fields } }; }); setDirty(true); setMessage(''); }
   function mutate(section: RepeatableProfileSection, action: 'add' | 'copy' | 'up' | 'down' | 'delete', index = 0) {
-    setProfile((current) => action === 'copy' ? addExperience(current, section, index) : action === 'delete' ? deleteExperience(current, section, index) : action === 'up' ? moveExperience(current, section, index, -1) : action === 'down' ? moveExperience(current, section, index, 1) : current);
-    setCounts((current) => ({ ...current, [section]: action === 'add' || action === 'copy' ? current[section] + 1 : action === 'delete' ? Math.max(1, current[section] - 1) : current[section] })); setDirty(true); setMessage('');
+    setEditor((current) => applyExperienceAction(current, section, action, index));
+    setDirty(true); setMessage('');
   }
-  async function save() { setSaving(true); setMessage(''); try { await profileStore.save(profile); setDirty(false); setMessage(`已保存 ${Object.keys(profile.fields).length} 个资料字段到本机`); } catch (error) { setMessage(error instanceof Error ? `保存失败：${error.message}` : '保存失败，请重试'); } finally { setSaving(false); } }
-  function imported(nextProfile: Profile) { setProfile(nextProfile); setCounts({ education: Math.max(1, experienceRecordCount(nextProfile, 'education')), work: Math.max(1, experienceRecordCount(nextProfile, 'work')), project: Math.max(1, experienceRecordCount(nextProfile, 'project')) }); setMappingRevision((current) => current + 1); setDirty(false); setMessage('配置已导入并保存到本机'); }
+  async function save() { setSaving(true); setMessage(''); try { await saveProfileWithMappingRemaps(profile, pendingRemaps, profileStore, mappingStore); setEditor((current) => ({ ...current, pendingRemaps: current.pendingRemaps.slice(pendingRemaps.length) })); setMappingRevision((current) => current + 1); setDirty(false); setMessage(`已保存 ${Object.keys(profile.fields).length} 个资料字段到本机`); } catch (error) { setMessage(error instanceof Error ? `保存失败：${error.message}` : '保存失败，请重试'); } finally { setSaving(false); } }
+  function imported(nextProfile: Profile) { setEditor({ profile: nextProfile, counts: { education: Math.max(1, experienceRecordCount(nextProfile, 'education')), work: Math.max(1, experienceRecordCount(nextProfile, 'work')), project: Math.max(1, experienceRecordCount(nextProfile, 'project')) }, pendingRemaps: [] }); setMappingRevision((current) => current + 1); setDirty(false); setMessage('配置已导入并保存到本机'); }
   return <main className="options-page">
     <header className="options-header"><div className="brand-mark">简</div><div><h1>简历资料中心</h1><p>资料仅保存在当前浏览器，填写前仍由你确认</p></div></header>
     <section className="intro-card"><div><strong>完善资料，减少重复填写</strong><span>支持多段教育、工作和项目；页面需已存在对应段落。</span></div><span className="privacy-badge">本地存储</span></section>

@@ -51,4 +51,10 @@ describe('verifyField', () => {
       reason: 'current value does not match expected value',
     });
   });
+
+  it('rejects a matching value when HTML validity fails after blur', () => {
+    const result = verifyField(fieldFor('<input type="email" value="not-an-email">', 'text'), 'not-an-email');
+    expect(result).toMatchObject({ fieldId: 'field-1', verified: false });
+    expect(result.reason).toBeTruthy();
+  });
 });

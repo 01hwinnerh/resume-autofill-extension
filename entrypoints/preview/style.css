@@ -79,3 +79,10 @@ aside small { color: #738098; }
 .comparison-row.modified { background:#f7fbff; box-shadow:inset 3px 0 #1677ff; }
 .preview-failure-item em { margin-top:2px; color:#74545f; font-size:11px; font-style:normal; }
 .preview-failure-item.failure-page { background:#f6faff; }.preview-failure-item.failure-format,.preview-failure-item.failure-option { background:#fffaf1; }
+
+.slot-warning { display:flex; gap:10px; align-items:center; margin-bottom:16px; padding:13px 16px; border:1px solid #f0c36d; border-radius:12px; color:#6f4b00; background:#fff8e7; }
+.slot-warning span { color:#795c22; }
+.save-state.saving { color:#6a7485; }
+.save-state.saved { color:#18794e; }
+.save-state.failed { color:#b42318; }
+.retry-save { margin-left:6px; padding:0; border:0; color:#b42318; background:transparent; font-size:11px; font-weight:700; text-decoration:underline; }

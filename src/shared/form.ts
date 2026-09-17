@@ -46,6 +46,9 @@ export interface PageFieldDescriptor {
   /** Non-sensitive evidence describing where site-specific semantics came from. */
   semanticSource?: string;
   framePath: number[];
+  /** Chrome frame context; present for live MV3 scans. */
+  tabId?: number;
+  frameId?: number;
   fingerprint: string;
 }
 
@@ -83,4 +86,13 @@ export interface ScanResult {
   page: ScanPageInfo;
   adapterId?: string;
   fields: FieldMatch[];
+  /** Only present when repeated page sections were confidently counted and fewer than populated profile records. */
+  repeatSectionWarnings?: Array<{
+    category: 'education' | 'work' | 'project';
+    profileCount: number;
+    pageCount: number;
+    message: string;
+  }>;
+  /** Frame-level failures do not fail fields scanned from accessible frames. */
+  frameWarnings?: string[];
 }

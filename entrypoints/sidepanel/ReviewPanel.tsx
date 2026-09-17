@@ -120,6 +120,8 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
       <button type="button" onClick={() => void onRescan()}>重新扫描</button>
     </section>
     <StatusSummary fields={result.fields} active={filter} onFilter={setFilter} />
+    {result.frameWarnings?.map((warning) => <section className="new-fields-alert" role="status" key={warning}><span><strong>部分 iframe 已跳过</strong><small>{warning}</small></span></section>)}
+    {result.repeatSectionWarnings?.map((warning) => <section className="new-fields-alert" role="alert" key={warning.category}><span><strong>页面经历槽位不足</strong><small>{warning.message}</small></span><button type="button" onClick={() => void onRescan()}>重新扫描</button></section>)}
     <DiagnosisSummary result={result} />
     <div className="field-toolbar card">
       <input aria-label="搜索字段" placeholder="搜索页面字段或资料字段" value={query} onChange={(event) => setQuery(event.target.value)} />

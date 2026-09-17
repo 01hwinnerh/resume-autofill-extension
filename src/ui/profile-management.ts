@@ -89,6 +89,13 @@ export function addExperience(profile: Profile, section: RepeatableProfileSectio
 
 export function deleteExperienceWithRemap(profile: Profile, section: RepeatableProfileSection, index: number): ExperienceMutation {
   const count = experienceRecordCount(profile, section);
+  if (section === 'education' && count <= 1) {
+    const fields = { ...profile.fields };
+    for (const [key, empty] of Object.entries(emptyExperienceFields(section, index))) {
+      fields[key] = { ...empty, policy: fields[key]?.policy ?? empty.policy };
+    }
+    return { profile: { ...profile, fields }, remap: {} };
+  }
   return reindexExperienceWithRemap(profile, section, Array.from({ length: count }, (_, current) => current).filter((current) => current !== index));
 }
 

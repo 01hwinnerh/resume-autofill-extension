@@ -123,9 +123,9 @@ test('notifies when a dynamic step reveals new fields without exposing values', 
   await page.goto('/dynamic-form.html');
   await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-watch-dynamic' });
   await page.getByRole('button', { name: '添加教育经历' }).click();
-  await expect.poll(async () => runtimeNotifications(page)).toContainEqual({
-    type: 'page-fields-changed', newFieldCount: 1,
-  });
+  await expect.poll(async () => runtimeNotifications(page)).toEqual([{
+    type: 'page-fields-changed', newFieldCount: 1, sessionInvalidated: true,
+  }]);
   const serialized = JSON.stringify(await runtimeNotifications(page));
   expect(serialized).not.toContain('毕业院校');
 });

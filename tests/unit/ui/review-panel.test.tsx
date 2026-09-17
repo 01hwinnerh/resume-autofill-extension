@@ -33,6 +33,17 @@ describe('ReviewPanel', () => {
     await vi.waitFor(() => expect(onSaveMapping).toHaveBeenCalledWith(expect.objectContaining({ scopeKind: 'global' })));
   });
 
+  it('shows a manual-add warning when repeated page slots are insufficient', () => {
+    const warningResult: ScanResult = {
+      ...result,
+      repeatSectionWarnings: [{ category: 'education', profileCount: 2, pageCount: 1, message: '教育经历资料有 2 段，页面只有 1 段，请手动新增后重新扫描。' }],
+    };
+    function WarningHarness() { const [selected, setSelected] = useState<string[]>([]); return <ReviewPanel result={warningResult} profile={{ schemaVersion: 1, fields: {} }} selected={selected} setSelected={setSelected} onFill={vi.fn()} onPreview={vi.fn(async () => undefined)} onSaveMapping={vi.fn(async () => undefined)} onLocate={vi.fn(async () => undefined)} onRescan={vi.fn(async () => undefined)} />; }
+
+    render(<WarningHarness />);
+    expect(screen.getByRole('alert').textContent).toContain('页面只有 1 段，请手动新增后重新扫描');
+  });
+
   it('sends an unmatched safe field to the full-screen preview', async () => {
     const onFill = vi.fn();
     const onPreview = vi.fn(async () => undefined);

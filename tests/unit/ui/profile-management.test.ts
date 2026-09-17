@@ -72,6 +72,21 @@ describe('profile management logic', () => {
     expect(moved.remap['educations.1.major']).toBe('educations.2.major');
   });
 
+  it('clears standard fields instead of removing the last education record', () => {
+    const single: Profile = { schemaVersion: 1, fields: {
+      'educations.0.school': { key: 'educations.0.school', label: '学校', type: 'text', value: 'A', policy: 'auto' },
+      'educations.0.degree': { key: 'educations.0.degree', label: '学历', type: 'enum', value: '本科', policy: 'review' },
+      'educations.0.extension': { key: 'educations.0.extension', label: '扩展', type: 'text', value: '保留', policy: 'auto' },
+    } };
+
+    const deleted = deleteExperienceWithRemap(single, 'education', 0);
+    expect(deleted.profile.fields['educations.0.school'].value).toBeNull();
+    expect(deleted.profile.fields['educations.0.degree']).toMatchObject({ value: null, policy: 'review' });
+    expect(deleted.profile.fields['educations.0.extension'].value).toBe('保留');
+    expect(deleted.remap).toEqual({});
+    expect(applyExperienceAction({ profile: single, counts: { education: 1, work: 0, project: 0 }, pendingRemaps: [] }, 'education', 'delete').counts.education).toBe(1);
+  });
+
   it('applies rapid structural actions sequentially from the latest editor state', () => {
     const initial = { profile: repeated, counts: { education: 3, work: 1, project: 1 }, pendingRemaps: [] };
     const moved = applyExperienceAction(initial, 'education', 'up', 2);

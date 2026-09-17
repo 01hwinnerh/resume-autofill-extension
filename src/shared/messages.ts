@@ -10,14 +10,16 @@ export interface ConfirmedFill {
   fieldId: string;
   profileKey: string;
   value: FieldValue;
-  /** Explicit retry may replace a value written by a previous failed attempt. */
+  tabId?: number;
+  frameId?: number;
   overwrite?: boolean;
 }
 
+interface SessionMessage { requestId: string; scanToken?: string; expectedFingerprint?: string }
 export type PageMessage =
-  | { type: 'scan-page'; requestId: string }
-  | { type: 'fill-fields'; requestId: string; fields: ConfirmedFill[] }
-  | { type: 'focus-field'; requestId: string; fieldId: string };
+  | ({ type: 'scan-page'; namespace?: string } & SessionMessage)
+  | ({ type: 'fill-fields'; fields: ConfirmedFill[] } & SessionMessage)
+  | ({ type: 'focus-field'; fieldId: string } & SessionMessage);
 
 export type RuntimeCommand =
   | { type: 'scan-active-tab'; target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'> }
@@ -28,25 +30,18 @@ export interface PageScanResult {
   descriptors: import('./form').PageFieldDescriptor[];
   adapterId?: string;
   metadata?: import('./form').ApplicationPageMetadata;
+  fingerprint?: string;
+  frameUrl?: string;
+  childFrameCount?: number;
 }
 
-export interface PageFieldsChangedMessage {
-  type: 'page-fields-changed';
-  newFieldCount: number;
-}
-
-export interface PageFillResult {
-  fieldId: string;
-  outcome: FillOutcome;
-  verification?: VerificationOutcome;
-}
-
+export interface PageFieldsChangedMessage { type: 'page-fields-changed'; newFieldCount: number; sessionInvalidated?: boolean }
+export interface PageFillResult { fieldId: string; outcome: FillOutcome; verification?: VerificationOutcome }
 export type PageResponse =
   | { type: 'scan-result'; requestId: string; result: PageScanResult }
   | { type: 'fill-result'; requestId: string; results: PageFillResult[] }
   | { type: 'focus-result'; requestId: string; fieldId: string; focused: boolean }
   | { type: 'error'; requestId: string; error: RuntimeError };
-
 export type RuntimeCommandResponse =
   | { ok: true; data: ScanResult | import('../runtime/application-controller').FillSummary | { fieldId: string; focused: boolean } }
   | { ok: false; error: RuntimeError };

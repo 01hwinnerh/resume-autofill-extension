@@ -8,6 +8,11 @@ class MemoryStorage implements StoragePort {
   setCount = 0;
   async get<T>(key: string): Promise<T | undefined> { return this.values.get(key) as T | undefined; }
   async set<T>(key: string, value: T): Promise<void> { this.setCount += 1; this.values.set(key, value); }
+  async compareAndSet<T>(key: string, expectedRevision: number, value: T): Promise<boolean> {
+    const current = this.values.get(key) as { revision?: number } | undefined;
+    if ((current?.revision ?? 0) !== expectedRevision) return false;
+    await this.set(key, value); return true;
+  }
 }
 const scope: MappingScope = { kind: 'path', host: 'example.test', path: '/apply' };
 const mapping = (fingerprint: string, profileKey = `profile.${fingerprint}`, sectionIndex?: number, createdAt = '2026-09-14T00:00:00.000Z'): UserFieldMapping => ({
@@ -60,12 +65,30 @@ describe('MappingStore', () => {
     await store.replace([first, second, third]); await store.deleteMany([first.id, third.id]);
     expect(await store.list()).toEqual([second]);
   });
-  it('falls back when persisted data is malformed', async () => {
-    const storage = new MemoryStorage(); await storage.set('resume-autofill.mappings.v1', { schemaVersion: 2, mappings: [mapping('first')] });
-    await expect(new MappingStore(storage).list()).resolves.toEqual([]); await storage.set('resume-autofill.mappings.v1', { schemaVersion: 1, mappings: [null] }); await expect(new MappingStore(storage).list()).resolves.toEqual([]);
+  it('falls back when persisted v1 data is malformed', async () => {
+    const storage = new MemoryStorage(); await storage.set('resume-autofill.mappings.v1', { schemaVersion: 1, mappings: [null] });
+    await expect(new MappingStore(storage).list()).resolves.toEqual([]);
+  });
+  it('rejects a future schema version and does not overwrite it', async () => {
+    const storage = new MemoryStorage(); const future = { schemaVersion: 2, revision: 3, mappings: [mapping('first')] };
+    await storage.set('resume-autofill.mappings.v1', future); const store = new MappingStore(storage);
+    await expect(store.list()).rejects.toThrow(/较新版本.*升级扩展/);
+    await expect(store.upsert(mapping('second'))).rejects.toThrow(/较新版本.*数据未被修改/);
+    expect(storage.values.get('resume-autofill.mappings.v1')).toEqual(future);
   });
   it('serializes concurrent upserts', async () => {
     const store = new MappingStore(new MemoryStorage()); await Promise.all([store.upsert(mapping('first')), store.upsert(mapping('second'))]); expect(await store.list()).toEqual([mapping('first'), mapping('second')]);
+  });
+  it('retries concurrent writes from two store instances without losing mappings', async () => {
+    const storage = new MemoryStorage(); const first = new MappingStore(storage); const second = new MappingStore(storage);
+    await Promise.all([first.upsert(mapping('first')), second.upsert(mapping('second'))]);
+    expect(await first.list()).toEqual([mapping('first'), mapping('second')]);
+  });
+  it('migrates a v1 envelope without a revision on its next write', async () => {
+    const storage = new MemoryStorage();
+    await storage.set('resume-autofill.mappings.v1', { schemaVersion: 1, mappings: [mapping('legacy')] });
+    await new MappingStore(storage).upsert(mapping('new'));
+    expect(storage.values.get('resume-autofill.mappings.v1')).toMatchObject({ schemaVersion: 1, revision: 1, mappings: [mapping('legacy'), mapping('new')] });
   });
   it('translates storage failures into a write StorageError', async () => {
     const cause = new Error('backend failed'); const storage: StoragePort = { get: async () => undefined, set: async () => { throw cause; } };

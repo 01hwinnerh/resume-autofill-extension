@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>第三轮兼容性测试</title></head>
+<body><main>
+<h1>同 URL 多步骤 ATS</h1>
+<form id="wizard"><section id="step"><label>姓名<input id="step-field" name="name"></label></section></form>
+<button id="next" type="button">同 URL 下一步</button>
+<section><label>结束年月<input id="month-text" placeholder="MM/YYYY"></label></section>
+<section><label>学历<input id="slow-degree" type="search" role="combobox"></label><span id="selected"></span></section>
+<section><label>受控邮箱<input id="rollback" type="email"></label></section>
+<iframe title="跨源工作经历" src="http://127.0.0.1:4174/iframe-ats-form.html"></iframe>
+</main><script>
+const degree=document.querySelector('#slow-degree');
+degree.addEventListener('click',()=>setTimeout(()=>{if(document.querySelector('#degree-portal'))return;const list=document.createElement('div');list.id='degree-portal';list.setAttribute('role','listbox');list.innerHTML='<button role="option">本科</button>';list.firstElementChild.addEventListener('click',()=>{degree.setAttribute('aria-valuetext','本科');document.querySelector('#selected').textContent='本科'});document.body.append(list)},700));
+document.querySelector('#next').addEventListener('click',()=>{document.querySelector('#step').innerHTML='<label>手机<input id="step-field-next" name="phone"></label>'});
+document.querySelector('#rollback').addEventListener('blur',event=>{event.target.value=''});
+</script></body></html>

@@ -152,6 +152,28 @@ describe('scanDocument', () => {
     expect(scanDocument(document, context).map((field) => field.label)).toEqual(['姓名']);
   });
 
+  it('recognizes conservative repeated div items and keeps their semantic degree labels', () => {
+    document.body.innerHTML = `
+      <section class="education-list"><h2>教育经历</h2>
+        <div class="education-item" data-testid="education-item-0"><h3>本科 / Bachelor</h3><label>学校<input name="school" /></label><label>专业<input name="major" /></label><button>删除</button></div>
+        <div class="education-item" data-testid="education-item-1"><h3>硕士 / Master</h3><label>学校<input name="school" /></label><label>专业<input name="major" /></label><button>删除</button></div>
+      </section>`;
+
+    const fields = scanDocument(document, context);
+    expect(fields.map((field) => field.sectionIndex)).toEqual([0, 0, 1, 1]);
+    expect(fields.map((field) => field.sectionLabel)).toEqual(['本科 / bachelor', '本科 / bachelor', '硕士 / master', '硕士 / master']);
+    expect(fields.every((field) => field.semanticSource?.startsWith('div-repeat'))).toBe(true);
+  });
+
+  it('does not classify an ordinary non-repeated div as an experience record', () => {
+    document.body.innerHTML = `
+      <div class="education-form"><h2>教育经历</h2>
+        <div class="form-row" data-testid="education-form-row" data-automation-id="education-editor"><label>学校<input name="school" /></label><label>专业<input name="major" /></label></div>
+      </div>`;
+
+    expect(scanDocument(document, context).map((field) => field.sectionIndex)).toEqual([undefined, undefined]);
+  });
+
   it('converts runtime fields into serializable descriptors without DOM handles', () => {
     document.body.innerHTML = '<input id="phone" name="phone" value="13800138000" />';
 

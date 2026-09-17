@@ -66,8 +66,8 @@ describe('ConfigMigrationCard', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认替换并导入' }));
 
     await waitFor(() => expect(onImported).toHaveBeenCalledWith(importedProfile));
-    expect(storage.values.get('resume-autofill.profile.v1')).toEqual(importedProfile);
-    expect(storage.values.get('resume-autofill.mappings.v1')).toEqual({ schemaVersion: 1, mappings: importedMappings });
+    expect(storage.values.get('resume-autofill.profile.v1')).toEqual({ schemaVersion: 1, revision: 1, profile: importedProfile });
+    expect(storage.values.get('resume-autofill.mappings.v1')).toEqual({ schemaVersion: 1, revision: 1, mappings: importedMappings });
     expect(screen.getByText(/导入成功：2 个资料字段、1 个自定义字段、1 条字段映射/)).toBeTruthy();
   });
 

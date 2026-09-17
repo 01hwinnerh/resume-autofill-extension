@@ -3,6 +3,7 @@ import { createMappingId, inferMappingSectionIndex, type MappingScope, type Norm
 import type { Profile } from '../../src/shared/profile';
 import type { MappingStore } from '../../src/storage/mapping-store';
 import { filterMappings, mappingProfileLabel, mappingProfileOptions, mappingSiteTarget, orphanedMappings } from '../../src/ui/mapping-management';
+import { userErrorMessage } from '../../src/ui/user-error-message';
 
 interface Filters {
   query: string;
@@ -50,10 +51,12 @@ export function MappingManager({ profile, mappingStore, refreshToken = 0 }: {
       setSelected(new Set());
       setEditingId('');
     }).catch((error) => {
-      if (active) setMessage(`读取映射失败：${error instanceof Error ? error.message : '未知错误'}`);
+      if (active) setMessage(userErrorMessage(error, '映射读取失败'));
     });
     return () => { active = false; };
   }, [mappingStore, refreshToken]);
+
+  useEffect(() => mappingStore.subscribe((items) => setMappings(items)), [mappingStore]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -90,7 +93,7 @@ export function MappingManager({ profile, mappingStore, refreshToken = 0 }: {
       setSelected(new Set());
       setMessage('字段映射已更新。');
     } catch (error) {
-      setMessage(`更新失败：${error instanceof Error ? error.message : '未知错误'}`);
+      setMessage(userErrorMessage(error, '映射更新失败'));
     } finally {
       setBusy(false);
     }
@@ -106,7 +109,7 @@ export function MappingManager({ profile, mappingStore, refreshToken = 0 }: {
       setPendingDelete([]);
       setMessage(`已删除 ${pendingDelete.length} 条字段映射。`);
     } catch (error) {
-      setMessage(`删除失败：${error instanceof Error ? error.message : '未知错误'}`);
+      setMessage(userErrorMessage(error, '映射删除失败'));
     } finally {
       setBusy(false);
     }

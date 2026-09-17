@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ProfileStore } from '../../src/profile/profile-store';
 import type { Profile } from '../../src/shared/profile';
 import { LocalStorage } from '../../src/storage/local-storage';
 import { MappingStore } from '../../src/storage/mapping-store';
 import { PROFILE_FIELDS, PROFILE_SECTION_LABELS, buildProfileField, emptyProfile, experienceDefinitions, profileFieldDefinitions, type ProfileSection, type RepeatableProfileSection } from '../../src/ui/profile-fields';
 import { applyExperienceAction, experienceRecordCount, saveProfileWithMappingRemaps, stringifyFieldValue, type ExperienceEditorState } from '../../src/ui/profile-management';
+import { userErrorMessage } from '../../src/ui/user-error-message';
 import { ConfigMigrationCard } from './ConfigMigrationCard';
 import { MappingManager } from './MappingManager';
 import { ProfileSectionCard } from './ProfileSectionCard';
@@ -15,22 +16,33 @@ const mappingStore = new MappingStore(storage);
 const SECTIONS = Object.keys(PROFILE_SECTION_LABELS) as ProfileSection[];
 const REPEATABLE = new Set<ProfileSection>(['education', 'work', 'project']);
 
+function editorFor(profile: Profile): ExperienceEditorState {
+  return { profile, counts: { education: Math.max(1, experienceRecordCount(profile, 'education')), work: Math.max(1, experienceRecordCount(profile, 'work')), project: Math.max(1, experienceRecordCount(profile, 'project')) }, pendingRemaps: [] };
+}
+
 export default function App() {
-  const [editor, setEditor] = useState<ExperienceEditorState>({ profile: emptyProfile(), counts: { education: 1, work: 1, project: 1 }, pendingRemaps: [] });
+  const [editor, setEditor] = useState<ExperienceEditorState>(editorFor(emptyProfile()));
   const { profile, counts, pendingRemaps } = editor;
   const [mappingRevision, setMappingRevision] = useState(0);
-  const [dirty, setDirty] = useState(false); const [saving, setSaving] = useState(false); const [message, setMessage] = useState('');
-  useEffect(() => { void profileStore.load().then((loaded) => { setEditor({ profile: loaded, counts: { education: Math.max(1, experienceRecordCount(loaded, 'education')), work: Math.max(1, experienceRecordCount(loaded, 'work')), project: Math.max(1, experienceRecordCount(loaded, 'project')) }, pendingRemaps: [] }); }); }, []);
+  const [dirty, setDirty] = useState(false); const dirtyRef = useRef(false); const [saving, setSaving] = useState(false); const [message, setMessage] = useState('');
+  function markDirty(value: boolean) { dirtyRef.current = value; setDirty(value); }
+  useEffect(() => {
+    void profileStore.load().then((loaded) => setEditor(editorFor(loaded)));
+    return profileStore.subscribe(() => {
+      if (dirtyRef.current) { setMessage('其他扩展页面更新了资料。你的未保存内容已保留，保存时会合并不同字段的修改。'); return; }
+      void profileStore.load().then((loaded) => { setEditor(editorFor(loaded)); setMessage('已同步其他扩展页面的资料更新。'); });
+    });
+  }, []);
   const definitions = useMemo(() => [...PROFILE_FIELDS.filter((item) => !REPEATABLE.has(item.section)), ...(['education', 'work', 'project'] as const).flatMap((section) => Array.from({ length: counts[section] }, (_, index) => experienceDefinitions(section, index)).flat())], [counts]);
   const grouped = useMemo(() => Object.fromEntries(SECTIONS.map((section) => [section, definitions.filter((item) => item.section === section)])) as Record<ProfileSection, typeof definitions>, [definitions]);
   const values = useMemo(() => Object.fromEntries(Object.entries(profile.fields).map(([key, field]) => [key, stringifyFieldValue(field.value)])), [profile]);
-  function change(key: string, value: string) { const definition = definitions.find((item) => item.key === key); if (!definition) return; setEditor((current) => { const fields = { ...current.profile.fields }; if (value.trim()) fields[key] = { ...buildProfileField(definition, value), policy: fields[key]?.policy ?? definition.policy }; else if (REPEATABLE.has(definition.section)) fields[key] = { key, label: definition.label, type: definition.type, value: null, policy: fields[key]?.policy ?? definition.policy }; else delete fields[key]; return { ...current, profile: { ...current.profile, fields } }; }); setDirty(true); setMessage(''); }
+  function change(key: string, value: string) { const definition = definitions.find((item) => item.key === key); if (!definition) return; setEditor((current) => { const fields = { ...current.profile.fields }; if (value.trim()) fields[key] = { ...buildProfileField(definition, value), policy: fields[key]?.policy ?? definition.policy }; else if (REPEATABLE.has(definition.section)) fields[key] = { key, label: definition.label, type: definition.type, value: null, policy: fields[key]?.policy ?? definition.policy }; else delete fields[key]; return { ...current, profile: { ...current.profile, fields } }; }); markDirty(true); setMessage(''); }
   function mutate(section: RepeatableProfileSection, action: 'add' | 'copy' | 'up' | 'down' | 'delete', index = 0) {
     setEditor((current) => applyExperienceAction(current, section, action, index));
-    setDirty(true); setMessage('');
+    markDirty(true); setMessage('');
   }
-  async function save() { setSaving(true); setMessage(''); try { await saveProfileWithMappingRemaps(profile, pendingRemaps, profileStore, mappingStore); setEditor((current) => ({ ...current, pendingRemaps: current.pendingRemaps.slice(pendingRemaps.length) })); setMappingRevision((current) => current + 1); setDirty(false); setMessage(`已保存 ${Object.keys(profile.fields).length} 个资料字段到本机`); } catch (error) { setMessage(error instanceof Error ? `保存失败：${error.message}` : '保存失败，请重试'); } finally { setSaving(false); } }
-  function imported(nextProfile: Profile) { setEditor({ profile: nextProfile, counts: { education: Math.max(1, experienceRecordCount(nextProfile, 'education')), work: Math.max(1, experienceRecordCount(nextProfile, 'work')), project: Math.max(1, experienceRecordCount(nextProfile, 'project')) }, pendingRemaps: [] }); setMappingRevision((current) => current + 1); setDirty(false); setMessage('配置已导入并保存到本机'); }
+  async function save() { setSaving(true); setMessage(''); try { await saveProfileWithMappingRemaps(profile, pendingRemaps, profileStore, mappingStore); setEditor((current) => ({ ...current, pendingRemaps: current.pendingRemaps.slice(pendingRemaps.length) })); setMappingRevision((current) => current + 1); markDirty(false); setMessage(`已保存 ${Object.keys(profile.fields).length} 个资料字段到本机`); } catch (error) { setMessage(userErrorMessage(error, '资料保存失败')); } finally { setSaving(false); } }
+  function imported(nextProfile: Profile) { setEditor(editorFor(nextProfile)); setMappingRevision((current) => current + 1); markDirty(false); setMessage('配置已导入并保存到本机'); }
   return <main className="options-page">
     <header className="options-header"><div className="brand-mark">简</div><div><h1>简历资料中心</h1><p>资料仅保存在当前浏览器，填写前仍由你确认</p></div></header>
     <section className="intro-card"><div><strong>完善资料，减少重复填写</strong><span>支持多段教育、工作和项目；页面需已存在对应段落。</span></div><span className="privacy-badge">本地存储</span></section>
@@ -40,6 +52,6 @@ export default function App() {
     <section className="profile-preview"><div><h2>资料预览</h2><p>预览包含尚未保存的修改与全部经历。</p></div>{SECTIONS.filter((section) => ['basic', 'education', 'work', 'project'].includes(section)).map((section) => { const rows = grouped[section].filter((field) => values[field.key]?.trim()); return <article key={section}><h3>{PROFILE_SECTION_LABELS[section]}</h3>{rows.length ? <dl>{rows.map((field) => <div key={field.key}><dt>{field.label}{field.key.match(/\.(\d+)\./) ? ` ${Number(field.key.match(/\.(\d+)\./)![1]) + 1}` : ''}</dt><dd>{values[field.key]}</dd></div>)}</dl> : <p>暂未填写</p>}</article>; })}</section>
     <section className="management-entry"><div><h2>页面边界</h2><p>扩展只匹配页面已存在的经历区块，不点击“新增经历”，也不会自动提交。</p></div><span>安全优先</span></section>
     <details className="developer-info"><summary>开发者信息 / 高级详情</summary><p>Canonical Key 供匹配引擎和调试使用。</p><ul>{profileFieldDefinitions(profile).filter((field) => values[field.key]?.trim()).map((field) => <li key={field.key}><strong>{field.label}</strong><code>{field.key}</code></li>)}</ul></details>
-    <footer className="save-bar"><span role="status">{saving ? '正在保存…' : message || (dirty ? '有未保存修改' : '所有修改已保存')}</span><button type="button" disabled={!dirty || saving} onClick={() => void save()}>{saving ? '保存中…' : '保存资料'}</button></footer>
+    <footer className="save-bar"><span role="status" aria-live="polite">{saving ? '正在保存…' : message || (dirty ? '有未保存修改' : '所有修改已保存')}</span><button type="button" disabled={!dirty || saving} onClick={() => void save()}>{saving ? '保存中…' : '保存资料'}</button></footer>
   </main>;
 }

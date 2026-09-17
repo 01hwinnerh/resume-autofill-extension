@@ -17,6 +17,7 @@ import { defaultSelectedFieldIds } from '../../src/ui/field-selection';
 import { emptyProfile } from '../../src/ui/profile-fields';
 import { parseFieldValue, profileCompletion } from '../../src/ui/profile-management';
 import { reducePanel } from '../../src/ui/panel-state';
+import { runtimeErrorMessage, userErrorMessage } from '../../src/ui/user-error-message';
 import { ApplicationRecordPrompt, type ApplicationDraft } from './ApplicationRecordPrompt';
 import { CustomFieldsManager } from './CustomFieldsManager';
 import { FillResultPanel } from './FillResultPanel';
@@ -70,6 +71,9 @@ export default function App() {
       setProfile(loadedProfile);
       setMappings(loadedMappings);
     });
+    const unsubscribeProfile = profileStore.subscribe((loadedProfile) => setProfile(loadedProfile));
+    const unsubscribeMappings = mappingStore.subscribe((loadedMappings) => setMappings(loadedMappings));
+    return () => { unsubscribeProfile(); unsubscribeMappings(); };
   }, []);
 
   useEffect(() => {
@@ -105,6 +109,13 @@ export default function App() {
       if (change.type !== 'page-fields-changed'
         || sender.tab?.id !== activeTarget.tabId
         || typeof change.newFieldCount !== 'number') return;
+      if (change.sessionInvalidated) {
+        const message = '页面步骤、关键字段或 iframe 已变化，请重新扫描。';
+        setSelected([]);
+        setNotice(message);
+        dispatch({ type: 'scan_failed', message });
+        return;
+      }
       setNewFieldCount(change.newFieldCount);
     };
     browser.runtime.onMessage.addListener(onFieldsChanged);
@@ -121,11 +132,11 @@ export default function App() {
       const [loadedProfile, target] = await Promise.all([profileStore.load(), currentPageTarget()]);
       setProfile(loadedProfile);
       const response = await browser.runtime.sendMessage({ type: 'scan-active-tab', target }) as RuntimeCommandResponse;
-      if (!response.ok || !('page' in response.data)) throw new Error(response.ok ? '扫描结果格式错误' : response.error.message);
+      if (!response.ok || !('page' in response.data)) throw response.ok ? new Error('invalid-scan-result') : response.error;
       setSelected(defaultSelectedFieldIds(response.data.fields));
       dispatch({ type: 'scan_succeeded', result: response.data });
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : '扫描失败';
+      const message = userErrorMessage(cause, '扫描失败');
       setNotice(message);
       dispatch({ type: 'scan_failed', message });
     }
@@ -188,7 +199,7 @@ export default function App() {
   async function locate(fieldId: string) {
     if (!scanResult?.target) return;
     const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId, target: scanResult.target }) as RuntimeCommandResponse;
-    if (!response.ok || !('focused' in response.data) || !response.data.focused) setNotice(response.ok ? '未找到页面字段，请重新扫描' : response.error.message);
+    if (!response.ok || !('focused' in response.data) || !response.data.focused) setNotice(response.ok ? '页面中已找不到该字段，请重新扫描后再定位。' : runtimeErrorMessage(response.error, '定位失败'));
   }
 
   async function fill(fields: ConfirmedFill[]) {
@@ -198,13 +209,13 @@ export default function App() {
     dispatch({ type: 'fill_requested', fields });
     try {
       const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target }) as RuntimeCommandResponse;
-      if (!response.ok || !('filled' in response.data)) throw new Error(response.ok ? '填写结果格式错误' : response.error.message);
+      if (!response.ok || !('filled' in response.data)) throw response.ok ? new Error('invalid-fill-result') : response.error;
       const summary = response.data as FillSummary;
       setLastApplication(draft);
       dispatch({ type: 'fill_succeeded', summary });
       if (summary.failed.length > 0) await locate(summary.failed[0].fieldId);
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : '填写失败';
+      const message = userErrorMessage(cause, '填写失败');
       setNotice(message);
       dispatch({ type: 'scan_failed', message });
     }

@@ -1,13 +1,15 @@
 import { createMappingId, inferMappingSectionIndex, normalizeMappingScope, type NormalizedUserFieldMapping, type UserFieldMapping } from '../shared/mapping';
-import { StorageError, type StoragePort } from './storage-port';
+import { StorageError, UnsupportedSchemaVersionError, type StoragePort } from './storage-port';
 
-const MAPPINGS_KEY = 'resume-autofill.mappings.v1';
+export const MAPPINGS_KEY = 'resume-autofill.mappings.v1';
 const MAPPINGS_SCHEMA_VERSION = 1 as const;
+const MAX_WRITE_ATTEMPTS = 8;
 
 export type ProfileKeyRemap = Record<string, string | null>;
 
 interface MappingEnvelope {
   schemaVersion: typeof MAPPINGS_SCHEMA_VERSION;
+  revision?: number;
   mappings: UserFieldMapping[];
 }
 
@@ -15,6 +17,7 @@ function isMappingEnvelope(value: unknown): value is MappingEnvelope {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<MappingEnvelope>;
   return candidate.schemaVersion === MAPPINGS_SCHEMA_VERSION
+    && (candidate.revision === undefined || (Number.isSafeInteger(candidate.revision) && candidate.revision! >= 0))
     && Array.isArray(candidate.mappings)
     && candidate.mappings.every(isUserFieldMapping);
 }
@@ -49,19 +52,28 @@ function normalizeAndDedupe(mappings: UserFieldMapping[]): NormalizedUserFieldMa
   return [...deduped.values()];
 }
 
+function decode(value: unknown): { mappings: NormalizedUserFieldMapping[]; revision: number } {
+  if (value && typeof value === 'object') {
+    const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
+    if (typeof schemaVersion === 'number' && schemaVersion > MAPPINGS_SCHEMA_VERSION) throw new UnsupportedSchemaVersionError(MAPPINGS_KEY, schemaVersion);
+  }
+  return isMappingEnvelope(value)
+    ? { mappings: normalizeAndDedupe(value.mappings), revision: value.revision ?? 0 }
+    : { mappings: [], revision: 0 };
+}
+
 export class MappingStore {
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly storage: StoragePort) {}
 
   async list(): Promise<NormalizedUserFieldMapping[]> {
-    let value: MappingEnvelope | undefined;
-    try {
-      value = await this.storage.get<MappingEnvelope>(MAPPINGS_KEY);
-    } catch (cause) {
-      throw new StorageError('read_failed', 'read', MAPPINGS_KEY, cause);
-    }
-    return isMappingEnvelope(value) ? normalizeAndDedupe(value.mappings) : [];
+    return (await this.read()).mappings;
+  }
+
+  subscribe(listener: (mappings: NormalizedUserFieldMapping[]) => void): () => void {
+    if (!this.storage.subscribe) return () => undefined;
+    return this.storage.subscribe<unknown>(MAPPINGS_KEY, (value) => listener(decode(value).mappings));
   }
 
   async upsert(mapping: UserFieldMapping): Promise<void> {
@@ -105,14 +117,33 @@ export class MappingStore {
     return this.update((mappings) => mappings.filter((mapping) => mapping.profileKey !== profileKey));
   }
 
+  private async read(): Promise<{ mappings: NormalizedUserFieldMapping[]; revision: number }> {
+    try {
+      return decode(await this.storage.get<unknown>(MAPPINGS_KEY));
+    } catch (cause) {
+      if (cause instanceof UnsupportedSchemaVersionError) throw cause;
+      throw new StorageError('read_failed', 'read', MAPPINGS_KEY, cause);
+    }
+  }
+
   private update(transform: (mappings: NormalizedUserFieldMapping[]) => UserFieldMapping[]): Promise<void> {
     const operation = this.writeQueue.then(async () => {
-      const mappings = normalizeAndDedupe(transform(await this.list()));
-      try {
-        await this.storage.set<MappingEnvelope>(MAPPINGS_KEY, { schemaVersion: MAPPINGS_SCHEMA_VERSION, mappings });
-      } catch (cause) {
-        throw new StorageError('write_failed', 'write', MAPPINGS_KEY, cause);
+      for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
+        const current = await this.read();
+        const mappings = normalizeAndDedupe(transform(current.mappings));
+        const envelope: MappingEnvelope = { schemaVersion: MAPPINGS_SCHEMA_VERSION, revision: current.revision + 1, mappings };
+        try {
+          if (this.storage.compareAndSet) {
+            if (await this.storage.compareAndSet(MAPPINGS_KEY, current.revision, envelope)) return;
+            continue;
+          }
+          await this.storage.set(MAPPINGS_KEY, envelope);
+          return;
+        } catch (cause) {
+          throw new StorageError('write_failed', 'write', MAPPINGS_KEY, cause);
+        }
       }
+      throw new StorageError('conflict', 'write', MAPPINGS_KEY, new Error('optimistic write retries exhausted'));
     });
     this.writeQueue = operation.catch(() => undefined);
     return operation;

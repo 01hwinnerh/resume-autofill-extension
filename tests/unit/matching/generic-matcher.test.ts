@@ -203,6 +203,41 @@ describe('matchFields', () => {
     expect(matches.map((match) => match.selected?.source)).toEqual(['user', 'user']);
   });
 
+  it('maps an education section as a unit by explicit degree-level semantics', () => {
+    const profile: Profile = { schemaVersion: 1, fields: {
+      'educations.0.school': { key: 'educations.0.school', label: '学校', type: 'text', value: '硕士大学', policy: 'auto' },
+      'educations.0.major': { key: 'educations.0.major', label: '专业', type: 'text', value: '硕士专业', policy: 'auto' },
+      'educations.0.degree': { key: 'educations.0.degree', label: '学历', type: 'enum', value: '硕士研究生', policy: 'auto' },
+      'educations.1.school': { key: 'educations.1.school', label: '学校', type: 'text', value: '本科大学', policy: 'auto' },
+      'educations.1.major': { key: 'educations.1.major', label: '专业', type: 'text', value: '本科专业', policy: 'auto' },
+      'educations.1.degree': { key: 'educations.1.degree', label: '学历', type: 'enum', value: 'Bachelor', policy: 'auto' },
+    } };
+    const fields = [
+      descriptor({ fieldId: 'b-school', label: '学校', sectionLabel: '本科 / Bachelor', semanticSource: 'div-repeat:education:本科', sectionIndex: 0 }),
+      descriptor({ fieldId: 'b-major', label: '专业', sectionLabel: '本科 / Bachelor', semanticSource: 'div-repeat:education:本科', sectionIndex: 0 }),
+      descriptor({ fieldId: 'm-school', label: '学校', sectionLabel: '硕士 / Master', semanticSource: 'div-repeat:education:硕士', sectionIndex: 1 }),
+    ];
+
+    const matches = matchFields(fields, profile, { mappings: [], pageContext: { host: 'job.test', path: '/' } });
+    expect(matches.map((match) => match.selected?.profileKey)).toEqual([
+      'educations.1.school', 'educations.1.major', 'educations.0.school',
+    ]);
+  });
+
+  it('keeps education records in section order when no degree level is present', () => {
+    const profile: Profile = { schemaVersion: 1, fields: {
+      'educations.0.school': { key: 'educations.0.school', label: '学校', type: 'text', value: '第一大学', policy: 'auto' },
+      'educations.1.school': { key: 'educations.1.school', label: '学校', type: 'text', value: '第二大学', policy: 'auto' },
+    } };
+    const fields = [
+      descriptor({ fieldId: 'school-0', label: '学校', sectionLabel: '教育经历', sectionIndex: 0 }),
+      descriptor({ fieldId: 'school-1', label: '学校', sectionLabel: '教育经历', sectionIndex: 1 }),
+    ];
+
+    expect(matchFields(fields, profile, { mappings: [], pageContext: { host: 'job.test', path: '/' } }).map((match) => match.selected?.profileKey))
+      .toEqual(['educations.0.school', 'educations.1.school']);
+  });
+
   it('does not let an explicit user mapping bypass never policy', () => {
     const field = descriptor({ label: 'Name', fingerprint: 'text|name' });
     const [match] = matchFields(

@@ -18,9 +18,10 @@ const allowedFixtures = new Set([
   'lever-ats.html',
   'workday-ats.html',
   'iframe-ats-form.html',
+  'third-round-ats.html',
 ]);
 const requestedPort = process.argv.slice(2).indexOf('--port');
-const port = requestedPort >= 0 ? Number(process.argv[requestedPort + 3]) : 4173;
+const port = requestedPort >= 0 ? Number(process.argv.slice(2)[requestedPort + 1]) : 4173;
 
 const server = createServer(async (request, response) => {
   try {

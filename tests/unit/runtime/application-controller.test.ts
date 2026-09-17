@@ -66,10 +66,10 @@ describe('application controller', () => {
 
     expect(result.fields[0]?.selected?.profileKey).toBe('contact.email');
     expect(browser.scripting.executeScript).toHaveBeenCalledWith({
-      target: { tabId: 7 },
+      target: { tabId: 7, allFrames: true },
       files: ['form-runtime.js'],
     });
-    const scanMessage = sendMessage.mock.calls[0]?.[1] as Record<string, unknown>;
+    const scanMessage = sendMessage.mock.calls[0]?.[1] as unknown as Record<string, unknown>;
     expect(scanMessage.type).toBe('scan-page');
     expect(scanMessage).not.toHaveProperty('profile');
     expect(scanMessage).not.toHaveProperty('mappings');
@@ -152,7 +152,7 @@ describe('application controller', () => {
     } satisfies BrowserPort;
 
     await expect(createApplicationController(dependencies(browser)).focusField('field-1')).resolves.toEqual({ fieldId: 'field-1', focused: true });
-    expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'focus-field', fieldId: 'field-1' }));
+    expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'focus-field', fieldId: 'field-1' }), { frameId: 0 });
   });
 
   it('translates injection failures into a permission error', async () => {
@@ -206,7 +206,7 @@ describe('application controller', () => {
     );
 
     expect(browser.tabs.query).not.toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'focus-field' }));
+    expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'focus-field' }), { frameId: 0 });
   });
 
   it('returns a retryable timeout for a scan response', async () => {
@@ -220,5 +220,66 @@ describe('application controller', () => {
 
     await expect(createApplicationController(dependencies(browser, 1)).scanActiveTab())
       .rejects.toMatchObject({ code: 'CONTENT_SCRIPT_TIMEOUT', retryable: true });
+  });
+
+  it('aggregates all accessible frames with tab/frame-unique field identities', async () => {
+    const browser = {
+      tabs: {
+        query: vi.fn(async () => [{ id: 7, url: 'https://job.test/app', title: 'Apply' }]),
+        sendMessage: vi.fn(async (_tabId: number, message: PageMessage, options?: { frameId: number }): Promise<PageResponse> => ({
+          type: 'scan-result', requestId: message.requestId, result: {
+            descriptors: [{ ...descriptor, fieldId: `tab-7-frame-${options?.frameId}:field-1` }],
+            fingerprint: `fingerprint-${options?.frameId}`, frameUrl: `https://frame${options?.frameId}.test`, childFrameCount: options?.frameId === 0 ? 1 : 0,
+          },
+        })),
+      },
+      scripting: { executeScript: vi.fn(async () => [{ frameId: 0 }, { frameId: 4 }]) },
+    } satisfies BrowserPort;
+
+    const result = await createApplicationController(dependencies(browser)).scanActiveTab();
+    expect(result.fields.map((field) => field.descriptor.fieldId)).toEqual(['tab-7-frame-0:field-1', 'tab-7-frame-4:field-1']);
+    expect(result.fields.map((field) => field.descriptor.frameId)).toEqual([0, 4]);
+    expect(new Set(result.fields.map((field) => field.descriptor.fieldId)).size).toBe(2);
+  });
+
+  it('falls back to a user-triggered top-frame injection when allFrames rejects without partial results', async () => {
+    const executeScript = vi.fn()
+      .mockRejectedValueOnce(new Error('one target frame is inaccessible'))
+      .mockResolvedValueOnce([{ frameId: 0 }]);
+    const browser = {
+      tabs: {
+        query: vi.fn(async () => [{ id: 7, url: 'https://job.test/app', title: 'Apply' }]),
+        sendMessage: vi.fn(async (_tabId: number, message: PageMessage): Promise<PageResponse> => ({
+          type: 'scan-result', requestId: message.requestId,
+          result: { descriptors: [descriptor], fingerprint: 'top', childFrameCount: 1 },
+        })),
+      },
+      scripting: { executeScript },
+    } satisfies BrowserPort;
+
+    const result = await createApplicationController(dependencies(browser)).scanActiveTab();
+    expect(executeScript.mock.calls.map(([details]) => details.target)).toEqual([
+      { tabId: 7, allFrames: true },
+      { tabId: 7 },
+    ]);
+    expect(result.fields).toHaveLength(1);
+    expect(result.frameWarnings?.join(' ')).toMatch(/部分 iframe/);
+  });
+
+  it('keeps accessible frame results and explains inaccessible frames', async () => {
+    const browser = {
+      tabs: {
+        query: vi.fn(async () => [{ id: 7, url: 'https://job.test/app', title: 'Apply' }]),
+        sendMessage: vi.fn(async (_tabId: number, message: PageMessage, options?: { frameId: number }): Promise<PageResponse> => {
+          if (options?.frameId === 9) throw new Error('no host permission');
+          return { type: 'scan-result', requestId: message.requestId, result: { descriptors: [descriptor], fingerprint: 'top', childFrameCount: 1 } };
+        }),
+      },
+      scripting: { executeScript: vi.fn(async () => [{ frameId: 0 }, { frameId: 9 }]) },
+    } satisfies BrowserPort;
+
+    const result = await createApplicationController(dependencies(browser)).scanActiveTab();
+    expect(result.fields).toHaveLength(1);
+    expect(result.frameWarnings?.join(' ')).toMatch(/iframe 9.*跳过/);
   });
 });

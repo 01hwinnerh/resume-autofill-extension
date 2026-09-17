@@ -1,7 +1,7 @@
 import type { PageFieldDescriptor, PageFieldKind } from '../shared/form';
 import type { FieldValue } from '../shared/profile';
 import { createFingerprint } from './fingerprint';
-import { resolveLabel, resolveSectionLabel } from './label-resolver';
+import { composedParentElement, resolveLabel, resolveSectionLabel } from './label-resolver';
 import { normalizeLabel } from './normalize-label';
 import type { RuntimePageField, ScanContext } from './runtime-types';
 import { isInputElement, isSelectElement, isTextareaElement } from './control-elements';
@@ -13,15 +13,47 @@ interface SectionInfo { index: number; label?: string; semanticSource?: string }
 function optionalAttribute(element: HTMLElement, name: string): string | undefined { return element.getAttribute(name) || undefined; }
 function isDisabled(element: HTMLElement): boolean { return element.matches(':disabled'); }
 function isHidden(element: HTMLElement): boolean {
-  if (element.closest('[hidden], [aria-hidden="true"], [inert]')) return true;
-  const view = element.ownerDocument.defaultView;
-  if (!view) return false;
-  const style = view.getComputedStyle(element);
-  return style.display === 'none' || style.visibility === 'hidden';
+  let current: HTMLElement | undefined = element;
+  while (current) {
+    if (current.closest('[hidden], [aria-hidden="true"], [inert]')) return true;
+    const view = current.ownerDocument.defaultView;
+    if (view) {
+      const style = view.getComputedStyle(current);
+      if (style.display === 'none' || style.visibility === 'hidden') return true;
+    }
+    const root = current.getRootNode();
+    current = root instanceof ShadowRoot && root.host instanceof HTMLElement ? root.host : undefined;
+  }
+  return false;
 }
 function supportedInput(element: HTMLInputElement): boolean { return !isDisabled(element) && !isHidden(element) && !EXCLUDED_INPUT_TYPES.has(element.type.toLowerCase()); }
 function optionsFor(select: HTMLSelectElement) { return Array.from(select.options).map((option) => ({ label: resolveLabel(option) || normalizeLabel(option.text), value: option.value })); }
 function radioOptions(inputs: HTMLInputElement[]) { return inputs.map((input) => ({ label: resolveLabel(input), value: input.value })); }
+
+export type ScanRoot = Document | ShadowRoot;
+
+export function openScanRoots(document: Document): ScanRoot[] {
+  const roots: ScanRoot[] = [];
+  const visited = new Set<ScanRoot>();
+  const visit = (root: ScanRoot) => {
+    if (visited.has(root)) return;
+    visited.add(root);
+    roots.push(root);
+    for (const element of root.querySelectorAll<HTMLElement>('*')) {
+      if (element.shadowRoot) visit(element.shadowRoot);
+    }
+  };
+  visit(document);
+  return roots;
+}
+
+function controlsAcrossOpenRoots(document: Document): HTMLElement[] {
+  const controls = new Set<HTMLElement>();
+  for (const root of openScanRoots(document)) {
+    root.querySelectorAll<HTMLElement>('input, textarea, select').forEach((control) => controls.add(control));
+  }
+  return [...controls];
+}
 
 function repeatCategory(label: string | undefined): RepeatCategory | undefined {
   const value = normalizeLabel(label);
@@ -42,7 +74,7 @@ function directSemanticLabel(container: HTMLElement): string | undefined {
 function categoryEvidence(element: HTMLElement): RepeatCategory | undefined {
   const resolved = repeatCategory(resolveSectionLabel(element));
   if (resolved) return resolved;
-  for (let ancestor: HTMLElement | null = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+  for (let ancestor = composedParentElement(element); ancestor; ancestor = composedParentElement(ancestor)) {
     const evidence = [ancestor.id, ancestor.className.toString(), directSemanticLabel(ancestor), ancestor.getAttribute('data-testid'), ancestor.getAttribute('data-automation-id')].filter(Boolean).join(' ');
     const category = repeatCategory(evidence);
     if (category) return category;
@@ -79,20 +111,23 @@ function hasItemEvidence(container: HTMLElement): boolean {
 
 function divRepeatContainer(element: HTMLElement): HTMLElement | undefined {
   if (!categoryEvidence(element)) return undefined;
-  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+  for (let ancestor = composedParentElement(element); ancestor; ancestor = composedParentElement(ancestor)) {
     if (ancestor.tagName === 'DIV' && hasItemEvidence(ancestor)) return ancestor;
   }
   return undefined;
 }
 
 function sectionContainer(element: HTMLElement): HTMLElement | undefined {
-  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+  for (let ancestor = composedParentElement(element); ancestor; ancestor = composedParentElement(ancestor)) {
     const isFormilyArrayCard = Array.from(ancestor.classList).some((token) => token.startsWith('apply-form-array-card__'));
     if (isFormilyArrayCard || ancestor.tagName === 'FIELDSET' || ancestor.getAttribute('role') === 'group') return ancestor;
   }
   const divContainer = divRepeatContainer(element);
   if (divContainer) return divContainer;
-  return element.closest<HTMLElement>('section') ?? undefined;
+  for (let ancestor = composedParentElement(element); ancestor; ancestor = composedParentElement(ancestor)) {
+    if (ancestor.tagName === 'SECTION') return ancestor;
+  }
+  return undefined;
 }
 
 function buildSectionInfo(controls: Element[]): Map<HTMLElement, SectionInfo> {
@@ -104,7 +139,15 @@ function buildSectionInfo(controls: Element[]): Map<HTMLElement, SectionInfo> {
     if (container && category && !containers[category].includes(container)) containers[category].push(container);
   }
   for (const [category, items] of Object.entries(containers) as Array<[RepeatCategory, HTMLElement[]]>) {
-    items.sort((left, right) => left === right ? 0 : left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+    const discoveryOrder = new Map(items.map((item, index) => [item, index]));
+    items.sort((left, right) => {
+      if (left === right) return 0;
+      const position = left.compareDocumentPosition(right);
+      if (position & Node.DOCUMENT_POSITION_DISCONNECTED) return discoveryOrder.get(left)! - discoveryOrder.get(right)!;
+      if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      return discoveryOrder.get(left)! - discoveryOrder.get(right)!;
+    });
     items.forEach((container, index) => {
       const label = directSemanticLabel(container);
       const isFormilyArrayCard = Array.from(container.classList).some((token) => token.startsWith('apply-form-array-card__'));
@@ -156,15 +199,17 @@ function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFie
 }
 
 export function scanDocument(document: Document, context: ScanContext): RuntimePageField[] {
-  const fields: RuntimePageField[] = []; const groupedRadios = new Set<string>();
-  const controls = Array.from(document.querySelectorAll('input, textarea, select')); const sectionInfo = buildSectionInfo(controls);
+  const fields: RuntimePageField[] = []; const groupedRadios = new Set<HTMLInputElement>();
+  const controls = controlsAcrossOpenRoots(document); const sectionInfo = buildSectionInfo(controls);
   for (const control of controls) {
     if (isInputElement(control)) {
       if (!supportedInput(control)) continue;
       if (control.type.toLowerCase() === 'radio' && control.name) {
-        const container = sectionContainer(control); const groupKey = `${control.name}:${container ? Array.from(sectionInfo.keys()).indexOf(container) : -1}`;
-        if (groupedRadios.has(groupKey)) continue; groupedRadios.add(groupKey);
-        const group = controls.filter((candidate): candidate is HTMLInputElement => isInputElement(candidate) && candidate.type.toLowerCase() === 'radio' && candidate.name === control.name && sectionContainer(candidate) === container && supportedInput(candidate));
+        if (groupedRadios.has(control)) continue;
+        const container = sectionContainer(control);
+        const root = control.getRootNode();
+        const group = controls.filter((candidate): candidate is HTMLInputElement => isInputElement(candidate) && candidate.type.toLowerCase() === 'radio' && candidate.name === control.name && candidate.getRootNode() === root && sectionContainer(candidate) === container && supportedInput(candidate));
+        group.forEach((candidate) => groupedRadios.add(candidate));
         const checked = group.find((option) => option.checked);
         fields.push(buildField(control, group, 'radio', checked?.value ?? null, radioOptions(group), `field-${fields.length + 1}`, context, sectionInfo)); continue;
       }

@@ -44,6 +44,11 @@ function extensionUrl(path: string): string {
   return (browser.runtime as typeof browser.runtime & { getURL(value: string): string }).getURL(path);
 }
 
+function isSessionInvalidation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error
+    && (error as { code?: unknown }).code === 'FIELD_OPERATION_FAILED';
+}
+
 async function currentPageTarget(): Promise<Omit<ScanTarget, 'scannedAt'>> {
   const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
   if (tab?.id === undefined || !tab.url || !/^https?:/i.test(tab.url)) {
@@ -63,7 +68,7 @@ export default function App() {
   const [manualApplication, setManualApplication] = useState<ApplicationDraft>();
   const [newFieldCount, setNewFieldCount] = useState(0);
   const completion = profileCompletion(profile);
-  const scanResult = state.kind === 'review' || state.kind === 'filling' || state.kind === 'result' ? state.result : undefined;
+  const scanResult = state.kind === 'review' || state.kind === 'invalidated' || state.kind === 'filling' || state.kind === 'result' ? state.result : undefined;
   const activeTarget = scanResult?.target;
 
   useEffect(() => {
@@ -81,18 +86,18 @@ export default function App() {
     const invalidate = (message: string) => {
       setSelected([]);
       setNotice(message);
-      dispatch({ type: 'scan_failed', message });
+      dispatch({ type: 'scan_invalidated', message });
     };
     const onActivated = (info: { tabId: number; windowId: number }) => {
       if (activeTarget.windowId !== undefined && info.windowId !== activeTarget.windowId) return;
       if (info.tabId === activeTarget.tabId) return;
       void browser.tabs.get(info.tabId).then((tab) => {
         if (tab.url?.startsWith(extensionUrl(''))) return;
-        invalidate('页面已切换，请重新扫描');
+        invalidate('页面已变化，请重新扫描');
       });
     };
     const onUpdated = (tabId: number, change: { url?: string }) => {
-      if (tabId === activeTarget.tabId && change.url && change.url !== activeTarget.url) invalidate('当前页面地址已变化，请重新扫描。');
+      if (tabId === activeTarget.tabId && change.url && change.url !== activeTarget.url) invalidate('页面已变化，请重新扫描');
     };
     browser.tabs.onActivated.addListener(onActivated);
     browser.tabs.onUpdated.addListener(onUpdated);
@@ -110,10 +115,10 @@ export default function App() {
         || sender.tab?.id !== activeTarget.tabId
         || typeof change.newFieldCount !== 'number') return;
       if (change.sessionInvalidated) {
-        const message = '页面步骤、关键字段或 iframe 已变化，请重新扫描。';
+        const message = '页面已变化，请重新扫描';
         setSelected([]);
         setNotice(message);
-        dispatch({ type: 'scan_failed', message });
+        dispatch({ type: 'scan_invalidated', message });
         return;
       }
       setNewFieldCount(change.newFieldCount);
@@ -197,8 +202,15 @@ export default function App() {
   }
 
   async function locate(fieldId: string) {
-    if (!scanResult?.target) return;
+    if (!scanResult?.target || state.kind === 'invalidated') return;
     const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId, target: scanResult.target }) as RuntimeCommandResponse;
+    if (!response.ok && isSessionInvalidation(response.error)) {
+      const message = '页面已变化，请重新扫描';
+      setSelected([]);
+      setNotice(message);
+      dispatch({ type: 'scan_invalidated', message });
+      return;
+    }
     if (!response.ok || !('focused' in response.data) || !response.data.focused) setNotice(response.ok ? '页面中已找不到该字段，请重新扫描后再定位。' : runtimeErrorMessage(response.error, '定位失败'));
   }
 
@@ -215,6 +227,13 @@ export default function App() {
       dispatch({ type: 'fill_succeeded', summary });
       if (summary.failed.length > 0) await locate(summary.failed[0].fieldId);
     } catch (cause) {
+      if (isSessionInvalidation(cause)) {
+        const message = '页面已变化，请重新扫描';
+        setSelected([]);
+        setNotice(message);
+        dispatch({ type: 'scan_invalidated', message });
+        return;
+      }
       const message = userErrorMessage(cause, '填写失败');
       setNotice(message);
       dispatch({ type: 'scan_failed', message });
@@ -273,9 +292,10 @@ export default function App() {
     {view === 'assistant' && <>
       {state.kind === 'idle' && <section className="assistant-empty card"><div className="completion-ring" aria-label={`资料完成度 ${completion.percent}%`}>{completion.percent}%</div><div><h2>{completion.filled ? '继续完善资料并扫描页面' : '先完善基础资料'}</h2><p>{completion.filled ? `已填写 ${completion.filled}/${completion.total} 项资料` : '填写姓名、手机和邮箱后，匹配会更准确。'}</p></div><div className="completion-groups"><span>基本信息 {completion.bySection.basic.filled}/{completion.bySection.basic.total}</span><span>教育 {completion.bySection.education.filled}/{completion.bySection.education.total}</span><span>工作 {completion.bySection.work.filled}/{completion.bySection.work.total}</span></div>{!completion.filled && <button className="secondary-button" type="button" onClick={() => setView('profile')}>完善基础资料</button>}</section>}
       <section className="scan-card card"><div><strong>{scanResult ? scanResult.page.title || scanResult.page.host : '扫描当前招聘页面'}</strong><span>{scanResult ? scanResult.page.url : '仅扫描当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : scanResult ? '重新扫描' : '扫描当前页面'}</button></section>
-      {newFieldCount > 0 && <section className="new-fields-alert" role="status"><span><strong>发现 {newFieldCount} 个新字段</strong><small>页面步骤或经历区块已变化，重新扫描不会自动填写或提交。</small></span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
+      {state.kind !== 'invalidated' && newFieldCount > 0 && <section className="new-fields-alert" role="status"><span><strong>发现 {newFieldCount} 个新字段</strong><small>页面步骤或经历区块已变化，重新扫描不会自动填写或提交。</small></span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
       <section className="manual-application-card card"><strong>已经完成投递？</strong><button type="button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
       {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
+      {state.kind === 'invalidated' && <section className="invalidated-card card" role="alert" aria-labelledby="invalidated-title"><div><h2 id="invalidated-title">页面已变化，请重新扫描</h2><p>旧扫描结果已停用，重新扫描后才能继续定位、预览或填写。</p></div><button type="button" className="primary-button" onClick={() => void scan()}>重新扫描当前页面</button></section>}
       {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} />}
       {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.fields.length} 个字段…</div>}
       {state.kind === 'result' && <>

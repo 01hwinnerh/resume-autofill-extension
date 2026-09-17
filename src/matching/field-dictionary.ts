@@ -20,22 +20,22 @@ const d = (
 ): DictionaryField => ({ key, aliases, sectionAliases, autocompleteAliases });
 
 export const FIELD_DICTIONARY: DictionaryField[] = [
-  d('identity.name', ['姓名', '全名', 'name', 'full name'], BASIC, ['name']),
+  d('identity.name', ['姓名', '中文姓名', '姓名（中文）', '全名', 'name', 'full name'], BASIC, ['name']),
   d('identity.firstName', ['名', '名字', 'first name', 'given name'], BASIC, ['given-name']),
   d('identity.lastName', ['姓', '姓氏', 'last name', 'family name', 'surname'], BASIC, ['family-name']),
   d('identity.namePinyin', ['姓名拼音', '姓名（拼音）', 'name pinyin', 'pinyin name']),
   d('identity.firstNamePinyin', ['名拼音', 'first name pinyin', 'given name pinyin']),
   d('identity.lastNamePinyin', ['姓拼音', 'last name pinyin', 'surname pinyin']),
-  d('contact.phone', ['手机号', '手机号码', '联系电话', '移动电话', 'phone', 'mobile', 'telephone'], BASIC, ['tel']),
+  d('contact.phone', ['手机', '手机号', '手机号码', '电话', '联系电话', '移动电话', 'phone', 'mobile', 'telephone'], BASIC, ['tel']),
   d('contact.email', ['邮箱', '电子邮箱', 'email', 'e-mail'], BASIC, ['email']),
   d('identity.gender', ['性别', 'gender', 'sex']), d('identity.birthDate', ['出生日期', '生日', 'date of birth', 'birth date', 'birthday'], BASIC, ['bday']),
-  d('location.current', ['现居地', '当前城市', '居住地', 'current location', 'current city', 'residence']),
+  d('location.current', ['现居地', '所在地', '现所在地', '目前所在地', '当前城市', '当前所在城市', '工作所在地', '居住地', 'current location', 'current city', 'residence']),
   d('employment.jobSeekingStatus', ['求职身份', '当前状态', '求职状态', 'candidate status', 'job seeking status']),
   d('employment.startWorkDate', ['参加工作时间', '首次工作时间', '开始工作时间', 'career start date']),
   d('employment.yearsOfExperience', ['工作年限', '工作经验年限', 'years of experience', 'experience years']),
 
-  d('educations.$.school', ['学校', '毕业院校', '院校', 'university', 'school', 'college'], EDUCATION),
-  d('educations.$.degree', ['学历', '学位', '最高学历', 'degree', 'education level'], EDUCATION),
+  d('educations.$.school', ['学校', '毕业学校', '毕业院校', '就读院校', '院校', '院校名称', 'university', 'school', 'college'], EDUCATION),
+  d('educations.$.degree', ['学历', '学位', '最高学历', '学历层次', 'degree', 'education level'], EDUCATION),
   d('educations.$.major', ['专业', '所学专业', 'major', 'field of study'], EDUCATION),
   d('educations.$.startDate', ['入学时间', '教育开始时间', 'start date', 'from'], EDUCATION),
   d('educations.$.endDate', ['毕业时间', '教育结束时间', 'graduation date', 'end date', 'to'], EDUCATION),
@@ -54,8 +54,8 @@ export const FIELD_DICTIONARY: DictionaryField[] = [
   d('educations.$.minor', ['辅修', '辅修专业', 'minor'], EDUCATION),
   d('educations.$.thesis', ['论文', '毕业论文', 'thesis', 'dissertation'], EDUCATION),
 
-  d('workExperiences.$.company', ['公司', '公司名称', '实习公司', '单位', 'company', 'employer', 'organization'], WORK, ['organization']),
-  d('workExperiences.$.title', ['职位', '岗位', '岗位名称', '职务', 'job title', 'position', 'title'], WORK, ['organization-title']),
+  d('workExperiences.$.company', ['公司', '公司名称', '实习公司', '单位', '单位名称', '工作单位', 'company', 'employer', 'organization'], WORK, ['organization']),
+  d('workExperiences.$.title', ['职位', '岗位', '工作岗位', '岗位名称', '职务', 'job title', 'position', 'title'], WORK, ['organization-title']),
   d('workExperiences.$.startDate', ['入职时间', '工作开始时间', '开始时间', 'start date', 'from'], WORK),
   d('workExperiences.$.endDate', ['离职时间', '工作结束时间', '结束时间', 'end date', 'to'], WORK),
   d('workExperiences.$.description', ['工作内容', '工作描述', '工作职责', 'job description', 'work description'], WORK),
@@ -98,11 +98,11 @@ export const FIELD_DICTIONARY: DictionaryField[] = [
   d('links.website', ['个人网站', '网站', 'website', 'personal website']), d('links.portfolio', ['作品集', '作品集链接', 'portfolio', 'portfolio url']),
 
   // Legacy non-indexed keys remain matchable for existing saved profiles.
-  d('education.school', ['学校', '毕业院校', 'university', 'school'], EDUCATION),
-  d('education.degree', ['学历', '最高学历', 'degree'], EDUCATION),
+  d('education.school', ['学校', '毕业学校', '毕业院校', '就读院校', '院校名称', 'university', 'school'], EDUCATION),
+  d('education.degree', ['学历', '最高学历', '学历层次', 'degree'], EDUCATION),
   d('education.major', ['专业', '所学专业', 'major'], EDUCATION),
-  d('experience.company', ['公司', '实习公司', 'company', 'employer'], WORK),
-  d('experience.title', ['职位', '岗位名称', 'job title', 'title'], WORK),
+  d('experience.company', ['公司', '实习公司', '单位名称', '工作单位', 'company', 'employer'], WORK),
+  d('experience.title', ['职位', '岗位', '工作岗位', '岗位名称', 'job title', 'title'], WORK),
 ];
 
 export function normalizeDictionaryKey(key: string): string {

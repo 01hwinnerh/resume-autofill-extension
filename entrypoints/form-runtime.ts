@@ -2,7 +2,7 @@ import { defineUnlistedScript } from 'wxt/utils/define-unlisted-script';
 import { fillField } from '../src/filling/control-filler';
 import { verifyField } from '../src/filling/verify-field';
 import { highlightField } from '../src/form-engine/focus-field';
-import { scanDocument, toDescriptor } from '../src/form-engine/scanner';
+import { openScanRoots, scanDocument, toDescriptor } from '../src/form-engine/scanner';
 import type { RuntimePageField } from '../src/form-engine/runtime-types';
 import { extractApplicationMetadata } from '../src/runtime/application-identity';
 import { createRuntimeError } from '../src/runtime/runtime-errors';
@@ -45,7 +45,9 @@ export default defineUnlistedScript(() => {
     sessionObserver = new MutationObserver((records) => {
       const relevant = records.some((record) => record.type === 'attributes'
         || Array.from(record.addedNodes).some((node) => node.nodeType === Node.ELEMENT_NODE
-          && ((node as Element).matches('input,textarea,select,iframe,frame') || Boolean((node as Element).querySelector('input,textarea,select,iframe,frame'))))
+          && ((node as Element).matches('input,textarea,select,iframe,frame')
+            || Boolean((node as Element).querySelector('input,textarea,select,iframe,frame'))
+            || Boolean((node as HTMLElement).shadowRoot)))
         || Array.from(record.removedNodes).some((node) => node.nodeType === Node.ELEMENT_NODE));
       if (!relevant) return;
       if (mutationTimer !== undefined) clearTimeout(mutationTimer);
@@ -59,7 +61,7 @@ export default defineUnlistedScript(() => {
         }).catch(() => undefined);
       }, 250);
     });
-    if (document.documentElement) sessionObserver.observe(document.documentElement, {
+    for (const root of openScanRoots(document)) sessionObserver.observe(root, {
       childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'aria-hidden', 'class', 'style'],
     });
   }

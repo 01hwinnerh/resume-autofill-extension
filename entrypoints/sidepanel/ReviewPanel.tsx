@@ -126,7 +126,7 @@ export function ReviewPanel({ result, profile, selected, setSelected, onFill, on
     <div className="field-toolbar card">
       <input aria-label="搜索字段" placeholder="搜索页面字段或资料字段" value={query} onChange={(event) => setQuery(event.target.value)} />
       <select aria-label="状态筛选" value={filter} onChange={(event) => setFilter(event.target.value as FieldFilter)}>
-        <option value="all">全部状态</option><option value="matched">已匹配</option><option value="needs_confirmation">待确认</option><option value="skipped_existing">已有值</option><option value="unsupported">手动处理</option><option value="failed">失败</option>
+        <option value="all">全部状态</option><option value="matched">资料就绪</option><option value="needs_confirmation">待确认</option><option value="missing_profile">资料缺失</option><option value="skipped_existing">已有值</option><option value="unsupported">手动处理</option><option value="failed">失败</option>
       </select>
       <button type="button" onClick={() => setSelected(toggleVisibleSelection(selected, selectableVisible, !allVisibleSelected))}>{allVisibleSelected ? '取消当前结果' : '全选当前结果'}</button>
       <button type="button" onClick={() => setSelected(quickFillFieldIds(result.fields, profile))}>仅选择可快速填写项</button>

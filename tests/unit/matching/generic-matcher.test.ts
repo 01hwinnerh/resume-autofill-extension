@@ -84,6 +84,59 @@ describe('matchFields', () => {
     expect(matches[0].status).toBe('matched');
   });
 
+  it('treats the common Chinese label 手机 as an exact phone alias', () => {
+    const [match] = matchFields(
+      [descriptor({ label: '手机', name: 'phone' })],
+      profileWith('contact.phone', 'phone-test-value'),
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected?.profileKey).toBe('contact.phone');
+    expect(match.selected?.score).toBeGreaterThan(0.5);
+    expect(match.status).toBe('matched');
+  });
+
+  it.each([
+    ['中文姓名', 'identity.name', undefined],
+    ['姓名（中文）', 'identity.name', undefined],
+    ['所在地', 'location.current', undefined],
+    ['现所在地', 'location.current', undefined],
+    ['目前所在地', 'location.current', undefined],
+    ['当前所在城市', 'location.current', undefined],
+    ['工作所在地', 'location.current', undefined],
+    ['毕业学校', 'educations.0.school', '教育经历'],
+    ['毕业院校', 'educations.0.school', '教育经历'],
+    ['就读院校', 'educations.0.school', '教育经历'],
+    ['院校名称', 'educations.0.school', '教育经历'],
+    ['最高学历', 'educations.0.degree', '教育经历'],
+    ['学历层次', 'educations.0.degree', '教育经历'],
+    ['公司', 'workExperiences.0.company', '工作经历'],
+    ['单位名称', 'workExperiences.0.company', '工作经历'],
+    ['工作单位', 'workExperiences.0.company', '工作经历'],
+    ['职位', 'workExperiences.0.title', '工作经历'],
+    ['岗位', 'workExperiences.0.title', '工作经历'],
+    ['工作岗位', 'workExperiences.0.title', '工作经历'],
+  ] as const)('matches the low-ambiguity Chinese alias %s', (label, profileKey, sectionLabel) => {
+    const [match] = matchFields(
+      [descriptor({ label, sectionLabel, sectionIndex: sectionLabel ? 0 : undefined })],
+      profileWith(profileKey, 'test-value'),
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected?.profileKey).toBe(profileKey);
+    expect(match.status).toBe('matched');
+  });
+
+  it('keeps 学历类型 mapped to degreeType rather than the broader degree field', () => {
+    const [match] = matchFields(
+      [descriptor({ label: '学历类型', sectionLabel: '教育经历', sectionIndex: 0 })],
+      profileWith('educations.0.degreeType', '全日制'),
+      { mappings: [], pageContext: { host: 'fixture.test', path: '/application' } },
+    );
+
+    expect(match.selected?.profileKey).toBe('educations.0.degreeType');
+  });
+
   it('requires confirmation for an ambiguous location label', () => {
     const [match] = matchFields(
       [descriptor({ label: 'Location' })],

@@ -25,6 +25,12 @@ function cleanLabel(value: string | null | undefined): string | undefined {
   return normalized && normalized.length <= 100 ? normalized : undefined;
 }
 
+export function composedParentElement(element: HTMLElement): HTMLElement | null {
+  if (element.parentElement) return element.parentElement;
+  const root = element.getRootNode();
+  return root instanceof ShadowRoot && root.mode === 'open' && root.host instanceof HTMLElement ? root.host : null;
+}
+
 function labelText(label: HTMLLabelElement | null | undefined): string | undefined {
   if (!label) return undefined;
   const clone = label.cloneNode(true) as HTMLLabelElement;
@@ -40,14 +46,22 @@ function labelFor(element: HTMLElement): string | undefined {
   }
   const id = element.id;
   if (!id) return undefined;
-  const label = Array.from(element.ownerDocument.querySelectorAll('label')).find((candidate) => candidate.htmlFor === id);
+  const root = element.getRootNode();
+  const labels = root instanceof Document || root instanceof ShadowRoot
+    ? root.querySelectorAll('label')
+    : element.ownerDocument.querySelectorAll('label');
+  const label = Array.from(labels).find((candidate) => candidate.htmlFor === id);
   return labelText(label);
 }
 
 function ariaLabelledBy(element: HTMLElement): string | undefined {
   const ids = element.getAttribute('aria-labelledby')?.split(/\s+/).filter(Boolean) ?? [];
   if (!ids.length) return undefined;
-  return cleanLabel(ids.map((id) => element.ownerDocument.getElementById(id)?.textContent ?? '').join(' '));
+  const root = element.getRootNode();
+  return cleanLabel(ids.map((id) => {
+    if (root instanceof Document || root instanceof ShadowRoot) return root.getElementById(id)?.textContent ?? '';
+    return element.ownerDocument.getElementById(id)?.textContent ?? '';
+  }).join(' '));
 }
 
 function dataLabel(element: HTMLElement): string | undefined {
@@ -157,7 +171,7 @@ const FORMILY_SECTION_LABELS: Record<string, string> = {
 export function resolveSectionLabel(element: HTMLElement): string | undefined {
   const schema = cleanLabel(element.getAttribute('data-resume-autofill-schema-section'));
   if (schema) return schema;
-  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+  for (let ancestor = composedParentElement(element); ancestor; ancestor = composedParentElement(ancestor)) {
     const formilySection = FORMILY_SECTION_LABELS[ancestor.id.replace(/^formily-item-/, '')];
     if (formilySection) return formilySection;
     if (ancestor.tagName === 'FIELDSET') {

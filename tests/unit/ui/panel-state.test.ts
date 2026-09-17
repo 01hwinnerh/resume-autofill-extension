@@ -37,7 +37,14 @@ describe('panel state', () => {
     expect(reducePanel(previous, { type: 'fill_requested', fields: retry })).toEqual({ kind: 'filling', result, fields: retry });
   });
 
-  it('returns to idle with an error after a scan failure', () => {
+  it('keeps the stale result only in an explicit blocked invalidated state', () => {
+    const review: PanelState = { kind: 'review', result };
+    expect(reducePanel(review, { type: 'scan_invalidated', message: '页面已变化，请重新扫描' })).toEqual({
+      kind: 'invalidated', result, message: '页面已变化，请重新扫描',
+    });
+  });
+
+  it('does not misclassify an ordinary scan failure as page invalidation', () => {
     const state = reducePanel({ kind: 'scanning' }, { type: 'scan_failed', message: 'The active tab is unavailable' });
     expect(state).toEqual({ kind: 'idle', error: 'The active tab is unavailable' });
   });

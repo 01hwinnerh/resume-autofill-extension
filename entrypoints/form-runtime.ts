@@ -4,7 +4,7 @@ import { verifyField } from '../src/filling/verify-field';
 import { highlightField } from '../src/form-engine/focus-field';
 import { openScanRoots, scanDocument, toDescriptor } from '../src/form-engine/scanner';
 import type { RuntimePageField } from '../src/form-engine/runtime-types';
-import { createPreviewOverlay, mutationTouchesPreviewOverlay } from '../src/runtime/preview-overlay';
+import { closeActivePreviewOverlay, createPreviewOverlay, mutationTouchesPreviewOverlay } from '../src/runtime/preview-overlay';
 import { extractApplicationMetadata } from '../src/runtime/application-identity';
 import { createRuntimeError } from '../src/runtime/runtime-errors';
 import type { ConfirmedFill, ContentPageMessage, PageMessage, PageResponse } from '../src/shared/messages';
@@ -138,6 +138,9 @@ export default defineUnlistedScript(() => {
   browser.runtime.onMessage.addListener((message: ContentPageMessage) => {
     if (message.type === 'scan-page') return Promise.resolve(scan(message.requestId, message.namespace, message.scanToken));
     if (message.type === 'focus-field') return Promise.resolve(focusField(message));
+    if (message.type === 'close-preview-overlay') {
+      return closeActivePreviewOverlay(document).then(() => ({ type: 'preview-overlay-closed' as const, requestId: message.requestId }));
+    }
     if (message.type === 'open-preview-overlay') {
       const allowedUrl = new URL((browser.runtime as typeof browser.runtime & { getURL(value: string): string }).getURL('preview.html'));
       const requestedUrl = new URL(message.previewUrl);

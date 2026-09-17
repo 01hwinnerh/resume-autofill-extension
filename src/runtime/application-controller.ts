@@ -50,6 +50,7 @@ export interface ApplicationController {
   scanActiveTab(target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<ScanResult>;
   fillConfirmed(fields: ConfirmedFill[], target?: ScanTarget): Promise<FillSummary>;
   focusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }>;
+  closeAndFocusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }>;
 }
 
 export interface FillSummary {
@@ -301,7 +302,19 @@ export function createApplicationController(
     return { fieldId: response.fieldId, focused: response.focused };
   }
 
-  return { scanActiveTab, fillConfirmed, focusField };
+  async function closeAndFocusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }> {
+    const tab = await targetTab(target);
+    await injectRuntime(tab.id!);
+    const closed = await sendPageMessage(tab.id!, {
+      type: 'close-preview-overlay', requestId: nextRequestId('close-preview'),
+    }, false, 0);
+    if (closed.type !== 'preview-overlay-closed') {
+      throw new RuntimeRequestError(createRuntimeError('FIELD_OPERATION_FAILED', '预览未能安全关闭，请重试。', true));
+    }
+    return focusField(fieldId, target);
+  }
+
+  return { scanActiveTab, fillConfirmed, focusField, closeAndFocusField };
 }
 
 export function handleRuntimeCommand(
@@ -312,7 +325,9 @@ export function handleRuntimeCommand(
     ? controller.scanActiveTab(command.target)
     : command.type === 'fill-confirmed-fields'
       ? controller.fillConfirmed(command.fields, command.target)
-      : controller.focusField(command.fieldId, command.target);
+      : command.type === 'close-and-focus-active-field'
+        ? controller.closeAndFocusField(command.fieldId, command.target)
+        : controller.focusField(command.fieldId, command.target);
   return operation
     .then((data) => ({ ok: true as const, data }))
     .catch((error: unknown) => {

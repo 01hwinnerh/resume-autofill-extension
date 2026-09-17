@@ -4,7 +4,7 @@ import type { FillOutcome, VerificationOutcome } from '../filling/fill-types';
 import type { RuntimeError } from '../runtime/runtime-errors';
 import type { ScanTarget } from '../runtime/scan-session';
 
-export const MESSAGE_TYPES = ['scan-page', 'fill-fields', 'focus-field'] as const;
+export const MESSAGE_TYPES = ['scan-page', 'fill-fields', 'focus-field', 'close-preview-overlay'] as const;
 
 export interface ConfirmedFill {
   fieldId: string;
@@ -19,14 +19,16 @@ interface SessionMessage { requestId: string; scanToken?: string; expectedFinger
 export type PageMessage =
   | ({ type: 'scan-page'; namespace?: string } & SessionMessage)
   | ({ type: 'fill-fields'; fields: ConfirmedFill[] } & SessionMessage)
-  | ({ type: 'focus-field'; fieldId: string } & SessionMessage);
+  | ({ type: 'focus-field'; fieldId: string } & SessionMessage)
+  | ({ type: 'close-preview-overlay' } & SessionMessage);
 export interface PreviewOverlayMessage { type: 'open-preview-overlay'; sessionId: string; previewUrl: string }
 export type ContentPageMessage = PageMessage | PreviewOverlayMessage;
 
 export type RuntimeCommand =
   | { type: 'scan-active-tab'; target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'> }
   | { type: 'fill-confirmed-fields'; fields: ConfirmedFill[]; target?: ScanTarget }
-  | { type: 'focus-active-field'; fieldId: string; target?: ScanTarget };
+  | { type: 'focus-active-field'; fieldId: string; target?: ScanTarget }
+  | { type: 'close-and-focus-active-field'; fieldId: string; target?: ScanTarget };
 
 export interface PageScanResult {
   descriptors: import('./form').PageFieldDescriptor[];
@@ -43,6 +45,7 @@ export type PageResponse =
   | { type: 'scan-result'; requestId: string; result: PageScanResult }
   | { type: 'fill-result'; requestId: string; results: PageFillResult[] }
   | { type: 'focus-result'; requestId: string; fieldId: string; focused: boolean }
+  | { type: 'preview-overlay-closed'; requestId: string }
   | { type: 'preview-overlay-opened'; sessionId: string }
   | { type: 'error'; requestId: string; error: RuntimeError };
 export type RuntimeCommandResponse =

@@ -32,9 +32,22 @@ async function fillTextLike(field: RuntimePageField, value: string): Promise<Fil
   if (isInputElement(control) && control.type.toLowerCase() === 'file') return failed(field.fieldId, 'file inputs are not supported');
   const normalized = normalizeValueForControl(control, value);
   if (normalized.reason || normalized.value === undefined) return failed(field.fieldId, normalized.reason ?? 'invalid control value');
+  const oldValue = control.value;
   control.focus();
   setNativeValue(control, normalized.value);
   dispatchInputAndChange(control);
+  control.blur();
+  const firstOutcome = await settleAndVerify(field, value);
+  if (firstOutcome.status === 'filled') return firstOutcome;
+
+  const retryableTypes = new Set(['text', 'email', 'tel', 'url', 'search', 'password']);
+  const retryable = isTextareaElement(control) || (isInputElement(control) && retryableTypes.has(control.type.toLowerCase()));
+  if (!retryable || (control.value !== '' && control.value !== oldValue)) return firstOutcome;
+
+  control.focus();
+  setNativeValue(control, normalized.value);
+  dispatchInputAndChange(control);
+  await new Promise((resolve) => setTimeout(resolve, 0));
   control.blur();
   return settleAndVerify(field, value);
 }

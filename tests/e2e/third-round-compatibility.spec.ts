@@ -15,10 +15,11 @@ test('aggregates a second-origin iframe with unique field ids and fills it indep
   const byId = (htmlId: string) => matches.find((match) => match.descriptor.htmlId === htmlId);
   const iframeMatches = matches.filter((match) => match.descriptor.framePath.length > 0);
 
-  expect(scan.result.descriptors).toHaveLength(9);
+  expect(scan.result.descriptors).toHaveLength(10);
   expect(byId('month-text')).toMatchObject({ status: 'missing_profile', selected: { profileKey: 'educations.0.endDate' } });
   expect(byId('slow-degree')).toMatchObject({ status: 'missing_profile', selected: { profileKey: 'educations.0.degree' } });
-  expect(byId('rollback')).toMatchObject({ status: 'missing_profile', selected: { profileKey: 'contact.email' } });
+  expect(byId('email')).toMatchObject({ status: 'missing_profile', selected: { profileKey: 'contact.email' } });
+  expect(byId('controlled-rollback')?.selected?.profileKey).not.toBe('contact.email');
   expect(iframeMatches).toHaveLength(5);
   expect(iframeMatches.map((match) => match.status)).toEqual(Array(5).fill('missing_profile'));
   expect(iframeMatches.map((match) => match.selected?.profileKey)).toEqual([
@@ -63,13 +64,17 @@ test('invalidates an old scan when a same-URL SPA step replaces key fields', asy
   await expect(page.locator('#step-field-next')).toHaveValue('');
 });
 
-test('reports blur rollback as a failed fill instead of success', async ({ page }) => {
+test('fills the normal email and reports the dedicated blur rollback probe as failed', async ({ page }) => {
   await page.goto('/third-round-ats.html');
   const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'third-blur-scan' });
-  const rollback = scan.result.descriptors.find((field) => field.htmlId === 'rollback')!;
+  const email = scan.result.descriptors.find((field) => field.htmlId === 'email')!;
+  const rollback = scan.result.descriptors.find((field) => field.htmlId === 'controlled-rollback')!;
   const fill = await runRuntimeMessage(page, { type: 'fill-fields', requestId: 'third-blur-fill', fields: [
-    { fieldId: rollback.fieldId, profileKey: 'contact.email', value: 'valid@example.test' },
+    { fieldId: email.fieldId, profileKey: 'contact.email', value: 'valid@example.test' },
+    { fieldId: rollback.fieldId, profileKey: 'custom.rollbackProbe', value: 'valid@example.test' },
   ] });
-  expect(fill.results[0]).toMatchObject({ outcome: { status: 'failed' } });
-  await expect(page.locator('#rollback')).toHaveValue('');
+  expect(fill.results[0]).toMatchObject({ outcome: { status: 'filled' }, verification: { verified: true } });
+  expect(fill.results[1]).toMatchObject({ outcome: { status: 'failed' } });
+  await expect(page.locator('#email')).toHaveValue('valid@example.test');
+  await expect(page.locator('#controlled-rollback')).toHaveValue('');
 });

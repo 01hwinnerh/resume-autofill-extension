@@ -226,7 +226,7 @@ export default function App() {
       if (scanResult?.target && !targetActive) setNotice('目标页未激活，请返回已扫描的招聘页后再操作。');
       return;
     }
-    const response = await browser.runtime.sendMessage({ type: 'focus-active-field', fieldId, target: scanResult.target }) as RuntimeCommandResponse;
+    const response = await browser.runtime.sendMessage({ type: 'close-and-focus-active-field', fieldId, target: scanResult.target }) as RuntimeCommandResponse;
     if (!response.ok && isSessionInvalidation(response.error)) {
       const message = '页面已变化，请重新扫描';
       setSelected([]);
@@ -249,7 +249,6 @@ export default function App() {
       const summary = response.data as FillSummary;
       setLastApplication(draft);
       dispatch({ type: 'fill_succeeded', summary });
-      if (summary.failed.length > 0) await locate(summary.failed[0].fieldId);
     } catch (cause) {
       if (isSessionInvalidation(cause)) {
         const message = '页面已变化，请重新扫描';

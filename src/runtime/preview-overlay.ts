@@ -17,6 +17,15 @@ export interface PreviewOverlayController {
 
 const activeOverlays = new WeakMap<Document, PreviewOverlayController>();
 
+export async function closeActivePreviewOverlay(document: Document): Promise<void> {
+  activeOverlays.get(document)?.close();
+  await new Promise<void>((resolve) => {
+    const view = document.defaultView;
+    if (view?.requestAnimationFrame) view.requestAnimationFrame(() => resolve());
+    else view?.setTimeout(resolve, 0) ?? resolve();
+  });
+}
+
 export function postMessageOrigin(url: string): string {
   const parsed = new URL(url);
   return parsed.origin === 'null' ? `${parsed.protocol}//${parsed.host}` : parsed.origin;

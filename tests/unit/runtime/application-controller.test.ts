@@ -155,6 +155,24 @@ describe('application controller', () => {
     expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'focus-field', fieldId: 'field-1' }), { frameId: 0 });
   });
 
+  it('closes the top-frame preview before focusing the target field', async () => {
+    const order: string[] = [];
+    const sendMessage = vi.fn(async (_tabId: number, message: PageMessage): Promise<PageResponse> => {
+      order.push(message.type);
+      if (message.type === 'close-preview-overlay') return { type: 'preview-overlay-closed', requestId: message.requestId };
+      if (message.type === 'focus-field') return { type: 'focus-result', requestId: message.requestId, fieldId: message.fieldId, focused: true };
+      throw new Error('unexpected command');
+    });
+    const browser = {
+      tabs: { query: vi.fn(async () => [{ id: 7, url: 'https://job.test/app', title: 'Apply' }]), sendMessage },
+      scripting: { executeScript: vi.fn(async () => undefined) },
+    } satisfies BrowserPort;
+
+    await expect(createApplicationController(dependencies(browser)).closeAndFocusField('field-1'))
+      .resolves.toEqual({ fieldId: 'field-1', focused: true });
+    expect(order).toEqual(['close-preview-overlay', 'focus-field']);
+  });
+
   it('translates injection failures into a permission error', async () => {
     const browser = {
       tabs: {

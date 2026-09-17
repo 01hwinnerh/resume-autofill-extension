@@ -23,7 +23,7 @@ export function FillResultPanel({ result, fields, summary, onRetry, onLocate, on
       <button type="button" className="secondary-button" onClick={onRescan}>重新扫描</button>
     </div>
     {summary.failed.length > 0 && <div className="failed-field-list" aria-label="填写失败字段">
-      <p className="auto-locate-note">已自动定位第一个失败字段；请按提示处理后重试。</p>
+      <p className="auto-locate-note">请查看失败原因，并按需定位字段后处理。</p>
       {summary.failed.map((failure) => {
         const match = matches.get(failure.fieldId);
         const feedback = failureFeedback(failure.reason);

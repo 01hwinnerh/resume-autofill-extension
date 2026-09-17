@@ -289,11 +289,35 @@ describe('fillField', () => {
     }
   });
 
+  it('fills a normal email input successfully', async () => {
+    const field = fieldFor('<input type="email" autocomplete="email">', 'text');
+    await expect(fillField(field, 'candidate@example.test', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect((field.elements[0] as HTMLInputElement).value).toBe('candidate@example.test');
+  });
+
+  it('retries one controlled text rollback once and succeeds after the framework catches up', async () => {
+    const field = fieldFor('<input type="email">', 'text');
+    const control = field.elements[0] as HTMLInputElement;
+    const input = vi.fn();
+    let blurCount = 0;
+    control.addEventListener('input', input);
+    control.addEventListener('blur', () => { if (++blurCount === 1) control.value = ''; });
+
+    await expect(fillField(field, 'candidate@example.test', { overwrite: false, confirmed: true }))
+      .resolves.toEqual({ status: 'filled', fieldId: 'field-1' });
+    expect(input).toHaveBeenCalledTimes(2);
+    expect(blurCount).toBe(2);
+  });
+
   it('does not report success when blur validation rolls a controlled value back', async () => {
     const field = fieldFor('<input>', 'text');
     const control = field.elements[0] as HTMLInputElement;
+    const input = vi.fn();
+    control.addEventListener('input', input);
     control.addEventListener('blur', () => { control.value = ''; });
     await expect(fillField(field, 'Lin', { overwrite: false, confirmed: true }))
       .resolves.toEqual({ status: 'failed', fieldId: 'field-1', reason: 'current value does not match expected value' });
+    expect(input).toHaveBeenCalledTimes(2);
   });
 });

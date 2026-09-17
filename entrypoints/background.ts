@@ -34,7 +34,7 @@ export default defineBackground(() => {
       storageWriteQueue = operation.then(() => undefined, () => undefined);
       return operation;
     }
-    if (!['scan-active-tab', 'fill-confirmed-fields', 'focus-active-field'].includes(message.type)) return undefined;
+    if (!['scan-active-tab', 'fill-confirmed-fields', 'focus-active-field', 'close-and-focus-active-field'].includes(message.type)) return undefined;
     return handleRuntimeCommand(controller, message);
   });
 });

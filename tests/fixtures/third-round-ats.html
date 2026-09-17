@@ -4,9 +4,11 @@
 <h1>同 URL 多步骤 ATS</h1>
 <form id="wizard"><section id="step"><label>姓名<input id="step-field" name="name"></label></section></form>
 <button id="next" type="button">同 URL 下一步</button>
-<section><label>结束年月<input id="month-text" placeholder="MM/YYYY"></label></section>
-<section><label>学历<input id="slow-degree" type="search" role="combobox"></label><span id="selected"></span></section>
-<section><label>受控邮箱<input id="rollback" type="email"></label></section>
+<fieldset><legend>教育经历</legend>
+<label>教育结束时间<input id="month-text" name="education_end_date" placeholder="MM/YYYY"></label>
+<label>学历<input id="slow-degree" name="education_degree" type="search" role="combobox"></label><span id="selected"></span>
+</fieldset>
+<section><label>电子邮箱<input id="rollback" name="email" type="email" autocomplete="email"></label></section>
 <iframe title="跨源工作经历" src="http://127.0.0.1:4174/iframe-ats-form.html"></iframe>
 </main><script>
 const degree=document.querySelector('#slow-degree');

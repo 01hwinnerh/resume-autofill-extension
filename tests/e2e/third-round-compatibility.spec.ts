@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resolveMatches } from '../../src/matching/resolve-match';
 import { runRuntimeMessage } from './support/runtime-harness';
 import type { PageMessage } from '../../src/shared/messages';
 
@@ -8,6 +9,22 @@ test('aggregates a second-origin iframe with unique field ids and fills it indep
   const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'third-scan' });
   const company = scan.result.descriptors.find((field) => field.label === '公司名称')!;
   const ids = scan.result.descriptors.map((field) => field.fieldId);
+  const matches = resolveMatches(scan.result.descriptors, { schemaVersion: 1, fields: {} }, {
+    mappings: [], pageContext: { host: '127.0.0.1:4173', path: '/third-round-ats.html' },
+  });
+  const byId = (htmlId: string) => matches.find((match) => match.descriptor.htmlId === htmlId);
+  const iframeMatches = matches.filter((match) => match.descriptor.framePath.length > 0);
+
+  expect(scan.result.descriptors).toHaveLength(9);
+  expect(byId('month-text')).toMatchObject({ status: 'missing_profile', selected: { profileKey: 'educations.0.endDate' } });
+  expect(byId('slow-degree')).toMatchObject({ status: 'missing_profile', selected: { profileKey: 'educations.0.degree' } });
+  expect(byId('rollback')).toMatchObject({ status: 'missing_profile', selected: { profileKey: 'contact.email' } });
+  expect(iframeMatches).toHaveLength(5);
+  expect(iframeMatches.map((match) => match.status)).toEqual(Array(5).fill('missing_profile'));
+  expect(iframeMatches.map((match) => match.selected?.profileKey)).toEqual([
+    'workExperiences.0.company', 'workExperiences.0.title', 'workExperiences.0.startDate',
+    'workExperiences.0.endDate', 'workExperiences.0.description',
+  ]);
   expect(company.fieldId).toContain('frame-0');
   expect(new Set(ids).size).toBe(ids.length);
 

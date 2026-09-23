@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewPanel } from '../../../entrypoints/sidepanel/ReviewPanel';
 import type { ScanResult } from '../../../src/shared/form';
@@ -10,7 +10,7 @@ const result: ScanResult = {
   target: { tabId: 7, url: 'https://job.test/apply', title: '申请', scannedAt: '2026-09-15T10:00:00.000Z' }, page: { url: 'https://job.test/apply', host: 'job.test', title: '申请' },
   fields: [{ descriptor: { fieldId: 'field-1', kind: 'text', inputType: 'date', label: '可到岗日期', options: [], currentValue: '', framePath: [], fingerprint: 'f1' }, candidates: [], status: 'unrecognized' }],
 };
-function Harness({ scan = result, profile = { schemaVersion: 1, fields: {} }, onFill = vi.fn(), onPreview = vi.fn(async () => undefined), onSaveMapping = vi.fn(async () => undefined), targetActive = true }: { scan?: ScanResult; profile?: Profile; onFill?: (fields: ConfirmedFill[]) => void; onPreview?: (fields: ConfirmedFill[]) => Promise<void>; onSaveMapping?: ReturnType<typeof vi.fn>; targetActive?: boolean }) {
+function Harness({ scan = result, profile = { schemaVersion: 1, fields: {} }, onFill = vi.fn(), onPreview = vi.fn(async () => undefined), onSaveMapping = vi.fn(async () => undefined), targetActive = true }: { scan?: ScanResult; profile?: Profile; onFill?: (fields: ConfirmedFill[]) => void; onPreview?: (fields: ConfirmedFill[]) => Promise<void>; onSaveMapping?: ComponentProps<typeof ReviewPanel>['onSaveMapping']; targetActive?: boolean }) {
   const [selected, setSelected] = useState<string[]>([]);
   return <ReviewPanel result={scan} profile={profile} selected={selected} setSelected={setSelected} onFill={onFill} onPreview={onPreview} onSaveMapping={onSaveMapping} onLocate={vi.fn(async () => undefined)} onRescan={vi.fn(async () => undefined)} targetActive={targetActive} />;
 }
@@ -22,7 +22,7 @@ describe('ReviewPanel inline persistence', () => {
     const input = screen.getByLabelText('可到岗日期本次填写值') as HTMLInputElement; expect(input.type).toBe('date'); fireEvent.change(input, { target: { value: '2026-10-01' } });
     fireEvent.click(screen.getByRole('button', { name: '保存到我的资料' }));
     await vi.waitFor(() => expect(onSaveMapping).toHaveBeenCalledWith(expect.objectContaining({ scopeKind: 'global', createMapping: true, profileKey: expect.stringMatching(/^custom\.field_/) })));
-    expect(screen.getByText(/自定义字段已保存/)).toBeTruthy();
+    expect(await screen.findByText(/自定义字段已保存/)).toBeTruthy();
   });
   it('creates a missing standard profile field without degrading it to a custom key', async () => {
     const onSaveMapping = vi.fn(async () => undefined); const scan: ScanResult = { ...result, fields: [{ ...result.fields[0]!, candidates: [{ profileKey: 'preference.availableDate', score: .9, source: 'generic', reasons: [] }], selected: { profileKey: 'preference.availableDate', score: .9, source: 'generic', reasons: [] }, status: 'missing_profile' }] };

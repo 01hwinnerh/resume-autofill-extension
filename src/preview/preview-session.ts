@@ -1,6 +1,7 @@
 import type { FieldMatch, ScanResult } from '../shared/form';
 import type { ConfirmedFill } from '../shared/messages';
-import type { Profile } from '../shared/profile';
+import type { FillPolicy, Profile, ProfileFieldType } from '../shared/profile';
+import { profileFieldDefinitions } from '../ui/profile-fields';
 import { stringifyFieldValue } from '../ui/profile-management';
 import { previewReasons } from '../ui/field-selection';
 
@@ -16,6 +17,11 @@ export interface FillPreviewItem {
   source: string;
   confidence?: number;
   reasons: string[];
+  profileFieldType: ProfileFieldType;
+  policy: FillPolicy;
+  controlKind: FieldMatch['descriptor']['kind'];
+  inputType?: string;
+  options: FieldMatch['descriptor']['options'];
 }
 
 export interface FillPreviewSession {
@@ -86,10 +92,15 @@ export function buildFillPreviewSession(
   confirmed: ConfirmedFill[],
 ): FillPreviewSession {
   const byId = new Map(scan.fields.map((match) => [match.descriptor.fieldId, match]));
+  const definitions = profileFieldDefinitions(profile);
   const items = confirmed.flatMap<FillPreviewItem>((field) => {
     const match = byId.get(field.fieldId);
     if (!match) return [];
     const profileField = profile.fields[field.profileKey];
+    const definition = definitions.find((item) => item.key === field.profileKey)
+      ?? definitions.find((item) => item.key.replace(/\.\d+\./, '.0.') === field.profileKey.replace(/\.\d+\./, '.0.'));
+    const profileFieldType: ProfileFieldType = profileField?.type ?? definition?.type
+      ?? (match.descriptor.kind === 'checkbox' ? 'boolean' : ['select', 'radio', 'combobox'].includes(match.descriptor.kind) ? 'enum' : match.descriptor.inputType === 'date' || match.descriptor.inputType === 'month' ? 'date' : match.descriptor.inputType === 'number' ? 'number' : 'text');
     return [{
       fieldId: field.fieldId,
       group: groupName(match),
@@ -100,6 +111,11 @@ export function buildFillPreviewSession(
       source: field.profileKey.startsWith('custom.') ? '自定义字段' : profileField ? '资料' : '本次输入',
       confidence: match.selected?.score,
       reasons: previewReasons(match, profile, !profileField),
+      profileFieldType,
+      policy: profileField?.policy ?? definition?.policy ?? 'review',
+      controlKind: match.descriptor.kind,
+      inputType: match.descriptor.inputType,
+      options: match.descriptor.options,
     }];
   });
   return {

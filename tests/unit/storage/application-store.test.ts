@@ -40,7 +40,7 @@ describe('ApplicationStore', () => {
 
     expect(updated.currentStage).toBe('interview_2');
     expect(updated.currentStageLabel).toBe('二面');
-    expect(updated.events.map((event) => event.label)).toEqual(['已投递', '二面', '笔试']);
+    expect(updated.events.map((event) => event.label)).toEqual(['已投递', '笔试', '二面']);
     expect(updated.events).toHaveLength(3);
   });
 
@@ -114,5 +114,39 @@ describe('application duplicate detection', () => {
     const store = new ApplicationStore(new MemoryStorage());
     await store.create({ company: '示例公司', role: '工程师', url: 'https://jobs.example.com/old', sourceHost: 'jobs.example.com', appliedAt: '2020-01-01T00:00:00.000Z' });
     expect(await store.findDuplicates({ company: '示例公司', role: '工程师', url: 'https://jobs.example.com/new', sourceHost: 'jobs.example.com' })).toHaveLength(0);
+  });
+});
+
+
+describe('application correction operations', () => {
+  it('updates record identity and validates URL protocols', async () => {
+    const store = new ApplicationStore(new MemoryStorage());
+    const record = await store.create({ company: '旧公司', role: '旧职位', url: '', sourceHost: '' });
+    const updated = await store.updateRecord(record.id, { company: '新公司', role: '新职位', url: 'https://jobs.example/new' });
+    expect(updated).toMatchObject({ company: '新公司', role: '新职位', sourceHost: 'jobs.example' });
+    await expect(store.updateRecord(record.id, { url: 'javascript:alert(1)' })).rejects.toThrow(/http\/https/);
+  });
+
+  it('stably sorts events and recomputes stage after editing and deleting', async () => {
+    const store = new ApplicationStore(new MemoryStorage());
+    const record = await store.create({ company: '示例公司', role: '工程师', url: '', sourceHost: '', appliedAt: '2026-09-15T10:00:00.000Z' });
+    const second = await store.addEvent(record.id, { stage: 'interview_1', occurredAt: '2026-09-17T10:00:00.000Z' });
+    const third = await store.addEvent(record.id, { stage: 'written_test', occurredAt: '2026-09-16T10:00:00.000Z' });
+    expect(third.events.map((event) => event.stage)).toEqual(['applied', 'written_test', 'interview_1']);
+    const latest = second.events.find((event) => event.stage === 'interview_1')!;
+    const edited = await store.updateEvent(record.id, latest.id, { stage: 'offer', occurredAt: '2026-09-18T10:00:00.000Z', note: '已确认' });
+    expect(edited).toMatchObject({ currentStage: 'offer', currentStageLabel: 'Offer', updatedAt: '2026-09-18T10:00:00.000Z' });
+    const reverted = await store.removeEvent(record.id, latest.id);
+    expect(reverted).toMatchObject({ currentStage: 'written_test', currentStageLabel: '笔试', updatedAt: '2026-09-16T10:00:00.000Z' });
+  });
+
+  it('refuses to remove the only event and atomically replaces normalized records', async () => {
+    const storage = new MemoryStorage(); const store = new ApplicationStore(storage);
+    const only = await store.create({ company: 'A', role: '工程师', url: '', sourceHost: '', appliedAt: '2026-09-15T10:00:00.000Z' });
+    await expect(store.removeEvent(only.id, only.events[0]!.id)).rejects.toThrow(/唯一/);
+    const replacement = { ...only, id: 'replacement', company: ' B ', events: [...only.events] };
+    await store.replaceAll([replacement]);
+    expect((await store.list()).map((record) => record.company)).toEqual(['B']);
+    expect(storage.values.get('resume-autofill.applications.v1')).toMatchObject({ revision: 2 });
   });
 });

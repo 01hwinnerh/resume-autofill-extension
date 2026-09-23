@@ -124,8 +124,36 @@ test('notifies when a dynamic step reveals new fields without exposing values', 
   await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-watch-dynamic' });
   await page.getByRole('button', { name: '添加教育经历' }).click();
   await expect.poll(async () => runtimeNotifications(page)).toEqual([{
-    type: 'page-fields-changed', newFieldCount: 1, sessionInvalidated: true,
+    type: 'page-fields-changed', newFieldCount: 1, sessionInvalidated: false,
   }]);
   const serialized = JSON.stringify(await runtimeNotifications(page));
   expect(serialized).not.toContain('毕业院校');
+});
+
+
+test('ignores scrolling and ordinary class/style mutations', async ({ page }) => {
+  await page.goto('/basic-form.html');
+  await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-scroll-stability' });
+  await page.evaluate(() => { document.body.classList.add('scrolled'); document.body.style.setProperty('--scroll-progress', '50%'); window.scrollTo(0, 100); });
+  await page.waitForTimeout(400);
+  expect(await runtimeNotifications(page)).toEqual([]);
+});
+
+test('rebinds a semantically identical replacement before filling', async ({ page }) => {
+  await page.goto('/basic-form.html');
+  const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-rebind' });
+  const name = scan.result.descriptors.find((field) => field.label === '姓名')!;
+  await page.evaluate(() => { const old = document.querySelector<HTMLInputElement>('#name')!; old.replaceWith(old.cloneNode(true)); });
+  await page.waitForTimeout(400);
+  expect(await runtimeNotifications(page)).toEqual([]);
+  const response = await runRuntimeMessage(page, { type: 'fill-fields', requestId: 'fill-rebound', fields: [{ fieldId: name.fieldId, profileKey: 'identity.name', value: '重绑定成功' }] });
+  expect(response.results[0]?.outcome.status).toBe('filled');
+  await expect(page.locator('#name')).toHaveValue('重绑定成功');
+});
+
+test('hard-invalidates when a baseline field disappears', async ({ page }) => {
+  await page.goto('/basic-form.html');
+  await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-remove-field' });
+  await page.locator('#name').evaluate((element) => element.remove());
+  await expect.poll(async () => runtimeNotifications(page)).toContainEqual({ type: 'page-fields-changed', newFieldCount: 0, sessionInvalidated: true });
 });

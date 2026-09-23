@@ -13,6 +13,7 @@ import type { ConfirmedFill, PageFieldsChangedMessage, RuntimeCommandResponse } 
 import type { FillPolicy, Profile, ProfileField } from '../../src/shared/profile';
 import { ApplicationStore } from '../../src/storage/application-store';
 import { LocalStorage } from '../../src/storage/local-storage';
+import { clearPendingApplication, loadPendingApplication, savePendingApplication } from '../../src/storage/pending-application';
 import { MappingStore } from '../../src/storage/mapping-store';
 import { defaultSelectedFieldIds } from '../../src/ui/field-selection';
 import { emptyProfile } from '../../src/ui/profile-fields';
@@ -67,6 +68,7 @@ export default function App() {
   const [mappings, setMappings] = useState<UserFieldMapping[]>([]);
   const [lastApplication, setLastApplication] = useState<ApplicationDraft>();
   const [manualApplication, setManualApplication] = useState<ApplicationDraft>();
+  const [manualApplicationSource, setManualApplicationSource] = useState<'pending' | 'current'>('current');
   const [newFieldCount, setNewFieldCount] = useState(0);
   const [targetActive, setTargetActive] = useState(false);
   const completion = profileCompletion(profile);
@@ -74,9 +76,10 @@ export default function App() {
   const activeTarget = scanResult?.target;
 
   useEffect(() => {
-    void Promise.all([profileStore.load(), mappingStore.list()]).then(([loadedProfile, loadedMappings]) => {
+    void Promise.all([profileStore.load(), mappingStore.list(), loadPendingApplication()]).then(([loadedProfile, loadedMappings, pending]) => {
       setProfile(loadedProfile);
       setMappings(loadedMappings);
+      if (pending) setLastApplication(pending);
     });
     const unsubscribeProfile = profileStore.subscribe((loadedProfile) => setProfile(loadedProfile));
     const unsubscribeMappings = mappingStore.subscribe((loadedMappings) => setMappings(loadedMappings));
@@ -149,7 +152,6 @@ export default function App() {
   async function scan() {
     setNotice('');
     setSelected([]);
-    setLastApplication(undefined);
     setNewFieldCount(0);
     dispatch({ type: 'scan_requested' });
     try {
@@ -172,19 +174,25 @@ export default function App() {
     setProfile(next);
   }
 
-  async function saveMapping(input: { fieldId: string; profileKey: string; customValue: string; policy: FillPolicy; label?: string; scopeKind: MappingScope['kind'] }) {
+  async function saveMapping(input: { fieldId: string; profileKey: string; customValue: string; policy: FillPolicy; label?: string; scopeKind: MappingScope['kind']; type: ProfileField['type']; createMapping: boolean }) {
     if (state.kind !== 'review') throw new Error('请先扫描页面');
     const field = state.result.fields.find((match) => match.descriptor.fieldId === input.fieldId);
     if (!field) throw new Error('页面字段不存在');
-    if (input.profileKey.startsWith('custom.')) {
-      const type = field.descriptor.inputType === 'date' ? 'date' as const : field.descriptor.inputType === 'number' ? 'number' as const : 'text' as const;
-      const nextProfile = { ...profile, fields: { ...profile.fields, [input.profileKey]: { key: input.profileKey, label: input.label || field.descriptor.label || input.profileKey, type, value: parseFieldValue(type, input.customValue), policy: input.policy } } };
-      await saveProfile(nextProfile);
+    const previousField = profile.fields[input.profileKey];
+    const updatedProfile = await profileStore.update((latest) => ({ ...latest, fields: { ...latest.fields, [input.profileKey]: { key: input.profileKey, label: input.label || field.descriptor.label || field.descriptor.name || input.profileKey, type: input.type, value: parseFieldValue(input.type, input.customValue), policy: input.policy } } }));
+    setProfile(updatedProfile);
+    if (input.createMapping) {
+      try {
+        const pageUrl = new URL(state.result.page.url);
+        const scope: MappingScope = input.scopeKind === 'global' ? { kind: 'global' } : input.scopeKind === 'host' ? { kind: 'host', host: state.result.page.host } : { kind: 'path', host: state.result.page.host, path: pageUrl.pathname };
+        await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, scope, field.descriptor.sectionIndex), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, sectionIndex: field.descriptor.sectionIndex, createdAt: new Date().toISOString() });
+        setMappings(await mappingStore.list());
+      } catch (error) {
+        const rolledBack = await profileStore.update((latest) => { const fields = { ...latest.fields }; if (previousField) fields[input.profileKey] = previousField; else delete fields[input.profileKey]; return { ...latest, fields }; });
+        setProfile(rolledBack);
+        throw error;
+      }
     }
-    const pageUrl = new URL(state.result.page.url);
-    const scope: MappingScope = input.scopeKind === 'global' ? { kind: 'global' } : input.scopeKind === 'host' ? { kind: 'host', host: state.result.page.host } : { kind: 'path', host: state.result.page.host, path: pageUrl.pathname };
-    await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, scope, field.descriptor.sectionIndex), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, sectionIndex: field.descriptor.sectionIndex, createdAt: new Date().toISOString() });
-    setMappings(await mappingStore.list());
   }
 
   async function saveCustomField(field: ProfileField, previousKey?: string) {
@@ -247,6 +255,7 @@ export default function App() {
       const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target }) as RuntimeCommandResponse;
       if (!response.ok || !('filled' in response.data)) throw response.ok ? new Error('invalid-fill-result') : response.error;
       const summary = response.data as FillSummary;
+      await savePendingApplication(draft);
       setLastApplication(draft);
       dispatch({ type: 'fill_succeeded', summary });
     } catch (cause) {
@@ -286,18 +295,28 @@ export default function App() {
     await browser.tabs.create({ url: extensionUrl('options.html') });
   }
 
-  async function openApplications() {
-    await browser.tabs.create({ url: extensionUrl('applications.html') });
+  async function openApplications(recordId?: string) {
+    const query = recordId ? `?id=${encodeURIComponent(recordId)}` : '';
+    await browser.tabs.create({ url: extensionUrl(`applications.html${query}`) });
   }
 
   async function beginManualApplicationRecord() {
     setNotice('');
     try {
+      const pending = await loadPendingApplication();
+      if (pending) {
+        setManualApplication(pending);
+        setManualApplicationSource('pending');
+        return;
+      }
       const target = await currentPageTarget();
       const page = scanResult?.page.url === target.url
         ? scanResult.page
         : { url: target.url, host: new URL(target.url).host, title: target.title };
-      setManualApplication(applicationDraft(page));
+      const inferred = applicationDraft(page);
+      const hasSpecificJobMetadata = 'metadata' in page && Boolean((page as ScanPageInfo).metadata?.jobTitle);
+      setManualApplication(hasSpecificJobMetadata ? inferred : { ...inferred, company: '', role: '' });
+      setManualApplicationSource('current');
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : '无法读取当前招聘页面');
     }
@@ -309,7 +328,10 @@ export default function App() {
 
   async function recordApplication(draft: ApplicationDraft) {
     const input: NewApplicationRecord = { ...draft };
-    return applicationStore.create(input);
+    const created = await applicationStore.create(input);
+    await clearPendingApplication();
+    setLastApplication(undefined);
+    return created;
   }
 
   return <main className="sidepanel-page">
@@ -323,14 +345,14 @@ export default function App() {
       <section className="scan-card card"><div><strong>{scanResult ? scanResult.page.title || scanResult.page.host : '扫描当前招聘页面'}</strong><span>{scanResult ? scanResult.page.url : '仅扫描当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : scanResult ? '重新扫描' : '扫描当前页面'}</button></section>
       {state.kind !== 'invalidated' && newFieldCount > 0 && <section className="new-fields-alert" role="status"><span><strong>发现 {newFieldCount} 个新字段</strong><small>页面步骤或经历区块已变化，重新扫描不会自动填写或提交。</small></span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
       <section className="manual-application-card card"><strong>已经完成投递？</strong><button type="button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
-      {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
+      {manualApplication && <ApplicationRecordPrompt draft={manualApplication} source={manualApplicationSource} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={(recordId) => void openApplications(recordId)} />}
       {activeTarget && state.kind !== 'invalidated' && !targetActive && <section className="target-suspended card" role="status"><strong>目标页未激活</strong><span>扫描结果已保留。请返回已扫描的招聘页，无需重新扫描。</span></section>}
       {state.kind === 'invalidated' && <section className="invalidated-card card" role="alert" aria-labelledby="invalidated-title"><div><h2 id="invalidated-title">页面已变化，请重新扫描</h2><p>旧扫描结果已停用，重新扫描后才能继续定位、预览或填写。</p></div><button type="button" className="primary-button" onClick={() => void scan()}>重新扫描当前页面</button></section>}
       {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} targetActive={targetActive} />}
       {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.fields.length} 个字段…</div>}
       {state.kind === 'result' && <>
         <FillResultPanel result={state.result} fields={state.fields} summary={state.summary} onRetry={(fields) => void fill(fields)} onLocate={(fieldId) => void locate(fieldId)} onRescan={() => void scan()} targetActive={targetActive} />
-        {lastApplication && <ApplicationRecordPrompt draft={lastApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
+        {lastApplication && <ApplicationRecordPrompt draft={lastApplication} source="pending" onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={(recordId) => void openApplications(recordId)} />}
       </>}
     </>}
   </main>;

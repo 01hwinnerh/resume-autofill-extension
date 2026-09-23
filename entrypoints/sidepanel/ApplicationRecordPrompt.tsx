@@ -8,16 +8,17 @@ export interface ApplicationDraft {
   sourceHost: string;
 }
 
-export function ApplicationRecordPrompt({ draft, onFindDuplicates, onRecord, onOpenManager }: {
+export function ApplicationRecordPrompt({ draft, source, onFindDuplicates, onRecord, onOpenManager }: {
   draft: ApplicationDraft;
+  source: 'pending' | 'current';
   onFindDuplicates: (draft: ApplicationDraft) => Promise<ApplicationRecord[]>;
   onRecord: (draft: ApplicationDraft) => Promise<ApplicationRecord>;
-  onOpenManager: () => void;
+  onOpenManager: (recordId?: string) => void;
 }) {
   const [company, setCompany] = useState(draft.company);
   const [role, setRole] = useState(draft.role);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [created, setCreated] = useState<ApplicationRecord>();
   const [message, setMessage] = useState('');
   const [duplicates, setDuplicates] = useState<ApplicationRecord[]>([]);
 
@@ -36,10 +37,10 @@ export function ApplicationRecordPrompt({ draft, onFindDuplicates, onRecord, onO
           return;
         }
       }
-      await onRecord(next);
+      const createdRecord = await onRecord(next);
       setDuplicates([]);
-      setSaved(true);
-      setMessage('记录成功');
+      setCreated(createdRecord);
+      setMessage('记录成功，查看该记录');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '记录失败，请重试');
     } finally {
@@ -48,8 +49,9 @@ export function ApplicationRecordPrompt({ draft, onFindDuplicates, onRecord, onO
   }
 
   return <section className="application-confirm card" aria-label="记录本次申请">
-    <div className="application-confirm-heading"><h3>确认投递信息</h3></div>
-    {!saved && <div className="application-fields">
+    <div className="application-confirm-heading"><h3>确认投递信息</h3><span>{source === 'pending' ? '使用最近填写的职位信息' : '根据当前页面推断'}</span></div>
+    {source === 'current' && (!draft.company || !draft.role) && <p className="notice" role="status">无法确定具体职位，请填写后记录。</p>}
+    {!created && <div className="application-fields">
       <label><span>公司</span><input value={company} onChange={(event) => updateCompany(event.target.value)} placeholder="例如：某某科技" /></label>
       <label><span>职位</span><input value={role} onChange={(event) => updateRole(event.target.value)} placeholder="例如：前端工程师" /></label>
     </div>}
@@ -58,10 +60,10 @@ export function ApplicationRecordPrompt({ draft, onFindDuplicates, onRecord, onO
       {duplicates.slice(0, 3).map((record) => <span key={record.id}>{new Date(record.appliedAt).toLocaleDateString('zh-CN')} · {record.company} · {record.role} · {record.currentStageLabel}</span>)}
       <div><button className="secondary-button" type="button" onClick={() => setDuplicates([])}>取消</button><button type="button" disabled={saving} onClick={() => void record(true)}>仍然记录</button></div>
     </div>}
-    {message && <p className={saved ? 'success-notice' : 'notice'} role="status">{message}</p>}
+    {message && <p className={created ? 'success-notice' : 'notice'} role="status">{message}</p>}
     <div className="application-actions">
-      {!saved && duplicates.length === 0 && <button type="button" disabled={saving || !company.trim() || !role.trim()} onClick={() => void record()}>{saving ? '正在检查…' : '确认投递并记录'}</button>}
-      <button className="secondary-button" type="button" onClick={onOpenManager}>查看投递记录</button>
+      {!created && duplicates.length === 0 && <button type="button" disabled={saving || !company.trim() || !role.trim()} onClick={() => void record()}>{saving ? '正在检查…' : '确认投递并记录'}</button>}
+      <button className="secondary-button" type="button" onClick={() => onOpenManager(created?.id)}>{created ? '查看该记录' : '查看投递记录'}</button>
     </div>
   </section>;
 }

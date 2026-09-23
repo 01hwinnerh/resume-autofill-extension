@@ -5,6 +5,7 @@ import { createPortableConfig, stringifyPortableConfig } from '../../../src/conf
 import { ProfileStore } from '../../../src/profile/profile-store';
 import { createMappingId, type UserFieldMapping } from '../../../src/shared/mapping';
 import type { Profile } from '../../../src/shared/profile';
+import { ApplicationStore } from '../../../src/storage/application-store';
 import { MappingStore } from '../../../src/storage/mapping-store';
 import type { StoragePort } from '../../../src/storage/storage-port';
 
@@ -37,11 +38,13 @@ function renderCard(profile: Profile, onImported = vi.fn()) {
   const storage = new MemoryStorage();
   const profileStore = new ProfileStore(storage);
   const mappingStore = new MappingStore(storage);
+  const applicationStore = new ApplicationStore(storage);
   render(
     <ConfigMigrationCard
       profile={profile}
       profileStore={profileStore}
       mappingStore={mappingStore}
+      applicationStore={applicationStore}
       onImported={onImported}
     />,
   );
@@ -51,24 +54,24 @@ function renderCard(profile: Profile, onImported = vi.fn()) {
 afterEach(() => cleanup());
 
 describe('ConfigMigrationCard', () => {
-  it('previews a valid export and replaces profile plus mappings only after confirmation', async () => {
+  it('previews replacement impact and imports all V2 categories only after confirmation', async () => {
     const onImported = vi.fn();
     const empty: Profile = { schemaVersion: 1, fields: {} };
     const { storage } = renderCard(empty, onImported);
     const json = stringifyPortableConfig(createPortableConfig(importedProfile, importedMappings, '2026-09-16T08:21:00.000Z'));
     const file = { name: 'resume-autofill-config.json', size: json.length, text: async () => json } as File;
 
-    fireEvent.change(screen.getByRole('region', { name: '配置迁移' }).querySelector('input[type="file"]')!, { target: { files: [file] } });
+    fireEvent.change(screen.getByRole('region', { name: '完整备份与恢复' }).querySelector('input[type="file"]')!, { target: { files: [file] } });
 
     expect(await screen.findByText('准备导入：resume-autofill-config.json')).toBeTruthy();
-    expect(screen.getByText('导入会整体替换当前个人资料、自定义字段和字段映射。投递记录不受影响。')).toBeTruthy();
+    expect(screen.getByText(/V2 完整备份将整体替换当前个人资料、字段映射和全部投递记录/)).toBeTruthy();
     expect(onImported).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '确认替换并导入' }));
 
     await waitFor(() => expect(onImported).toHaveBeenCalledWith(importedProfile));
     expect(storage.values.get('resume-autofill.profile.v1')).toEqual({ schemaVersion: 1, revision: 1, profile: importedProfile });
     expect(storage.values.get('resume-autofill.mappings.v1')).toEqual({ schemaVersion: 1, revision: 1, mappings: importedMappings });
-    expect(screen.getByText(/导入成功：2 个资料字段、1 个自定义字段、1 条字段映射/)).toBeTruthy();
+    expect(screen.getByText(/导入成功：已替换 2 个资料字段和 1 条映射/)).toBeTruthy();
   });
 
   it('reports orphaned mappings after a successful import', async () => {
@@ -77,7 +80,7 @@ describe('ConfigMigrationCard', () => {
     const json = stringifyPortableConfig(createPortableConfig(importedProfile, orphanedMappings, '2026-09-16T08:21:00.000Z'));
     const file = { name: 'with-orphan.json', size: json.length, text: async () => json } as File;
 
-    fireEvent.change(screen.getByRole('region', { name: '配置迁移' }).querySelector('input[type="file"]')!, { target: { files: [file] } });
+    fireEvent.change(screen.getByRole('region', { name: '完整备份与恢复' }).querySelector('input[type="file"]')!, { target: { files: [file] } });
     await screen.findByText('准备导入：with-orphan.json');
     fireEvent.click(screen.getByRole('button', { name: '确认替换并导入' }));
 
@@ -88,7 +91,7 @@ describe('ConfigMigrationCard', () => {
     renderCard({ schemaVersion: 1, fields: {} });
     const file = { name: 'broken.json', size: 1, text: async () => '{' } as File;
 
-    fireEvent.change(screen.getByRole('region', { name: '配置迁移' }).querySelector('input[type="file"]')!, { target: { files: [file] } });
+    fireEvent.change(screen.getByRole('region', { name: '完整备份与恢复' }).querySelector('input[type="file"]')!, { target: { files: [file] } });
 
     expect(await screen.findByText('无法导入：文件不是有效的 JSON。')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '确认替换并导入' })).toBeNull();

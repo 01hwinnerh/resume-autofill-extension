@@ -1,8 +1,9 @@
 import { useEffect, useReducer, useState } from 'react';
 import { browser } from 'wxt/browser';
-import { buildFillPreviewSession, buildProfilePreviewSession, previewStorageKey } from '../../src/preview/preview-session';
+import { buildFillPreviewSession, buildProfilePreviewSession, storePreviewSession } from '../../src/preview/preview-session';
 import type { NewApplicationRecord } from '../../src/shared/application-record';
 import { ProfileStore } from '../../src/profile/profile-store';
+import type { ApplicationCandidate } from '../../src/runtime/application-candidate-extractor';
 import { inferApplicationIdentity } from '../../src/runtime/application-identity';
 import { openPreviewInTargetTab, targetTabState } from '../../src/runtime/preview-target';
 import type { FillSummary } from '../../src/runtime/application-controller';
@@ -13,13 +14,15 @@ import type { ConfirmedFill, PageFieldsChangedMessage, RuntimeCommandResponse } 
 import type { FillPolicy, Profile, ProfileField } from '../../src/shared/profile';
 import { ApplicationStore } from '../../src/storage/application-store';
 import { LocalStorage } from '../../src/storage/local-storage';
+import { clearPendingApplication, loadPendingApplication, matchPendingApplications, savePendingApplicationForPage } from '../../src/storage/pending-application';
 import { MappingStore } from '../../src/storage/mapping-store';
 import { defaultSelectedFieldIds } from '../../src/ui/field-selection';
 import { emptyProfile } from '../../src/ui/profile-fields';
-import { parseFieldValue, profileCompletion } from '../../src/ui/profile-management';
+import { parseFieldValue, profileCompletion, saveProfileWithMappingRemaps } from '../../src/ui/profile-management';
 import { reducePanel } from '../../src/ui/panel-state';
 import { runtimeErrorMessage, userErrorMessage } from '../../src/ui/user-error-message';
-import { ApplicationRecordPrompt, type ApplicationDraft } from './ApplicationRecordPrompt';
+import { ApplicationRecordPrompt, type ApplicationDraft, type ApplicationSource } from './ApplicationRecordPrompt';
+import { ApplicationRecordsPanel } from './ApplicationRecordsPanel';
 import { CustomFieldsManager } from './CustomFieldsManager';
 import { FillResultPanel } from './FillResultPanel';
 import { QuickProfileEditor } from './QuickProfileEditor';
@@ -29,7 +32,7 @@ const storage = new LocalStorage();
 const profileStore = new ProfileStore(storage);
 const mappingStore = new MappingStore(storage);
 const applicationStore = new ApplicationStore(storage);
-type View = 'assistant' | 'profile' | 'custom';
+type View = 'assistant' | 'profile' | 'custom' | 'applications';
 
 function applicationDraft(page: ScanPageInfo): ApplicationDraft {
   const identity = inferApplicationIdentity(page);
@@ -67,6 +70,8 @@ export default function App() {
   const [mappings, setMappings] = useState<UserFieldMapping[]>([]);
   const [lastApplication, setLastApplication] = useState<ApplicationDraft>();
   const [manualApplication, setManualApplication] = useState<ApplicationDraft>();
+  const [manualApplicationCandidates, setManualApplicationCandidates] = useState<ApplicationDraft[]>([]);
+  const [manualApplicationSource, setManualApplicationSource] = useState<ApplicationSource>('manual');
   const [newFieldCount, setNewFieldCount] = useState(0);
   const [targetActive, setTargetActive] = useState(false);
   const completion = profileCompletion(profile);
@@ -74,9 +79,10 @@ export default function App() {
   const activeTarget = scanResult?.target;
 
   useEffect(() => {
-    void Promise.all([profileStore.load(), mappingStore.list()]).then(([loadedProfile, loadedMappings]) => {
+    void Promise.all([profileStore.load(), mappingStore.list(), loadPendingApplication()]).then(([loadedProfile, loadedMappings, pending]) => {
       setProfile(loadedProfile);
       setMappings(loadedMappings);
+      if (pending) setLastApplication({ ...pending, pendingTargetKey: pending.targetKey });
     });
     const unsubscribeProfile = profileStore.subscribe((loadedProfile) => setProfile(loadedProfile));
     const unsubscribeMappings = mappingStore.subscribe((loadedMappings) => setMappings(loadedMappings));
@@ -149,7 +155,6 @@ export default function App() {
   async function scan() {
     setNotice('');
     setSelected([]);
-    setLastApplication(undefined);
     setNewFieldCount(0);
     dispatch({ type: 'scan_requested' });
     try {
@@ -172,34 +177,41 @@ export default function App() {
     setProfile(next);
   }
 
-  async function saveMapping(input: { fieldId: string; profileKey: string; customValue: string; policy: FillPolicy; label?: string; scopeKind: MappingScope['kind'] }) {
+  async function saveMapping(input: { fieldId: string; profileKey: string; customValue: string; policy: FillPolicy; label?: string; scopeKind: MappingScope['kind']; type: ProfileField['type']; createMapping: boolean }) {
     if (state.kind !== 'review') throw new Error('请先扫描页面');
     const field = state.result.fields.find((match) => match.descriptor.fieldId === input.fieldId);
     if (!field) throw new Error('页面字段不存在');
-    if (input.profileKey.startsWith('custom.')) {
-      const type = field.descriptor.inputType === 'date' ? 'date' as const : field.descriptor.inputType === 'number' ? 'number' as const : 'text' as const;
-      const nextProfile = { ...profile, fields: { ...profile.fields, [input.profileKey]: { key: input.profileKey, label: input.label || field.descriptor.label || input.profileKey, type, value: parseFieldValue(type, input.customValue), policy: input.policy } } };
-      await saveProfile(nextProfile);
+    const previousField = profile.fields[input.profileKey];
+    const updatedProfile = await profileStore.update((latest) => ({ ...latest, fields: { ...latest.fields, [input.profileKey]: { key: input.profileKey, label: input.label || field.descriptor.label || field.descriptor.name || input.profileKey, type: input.type, value: parseFieldValue(input.type, input.customValue), policy: input.policy } } }));
+    setProfile(updatedProfile);
+    if (input.createMapping) {
+      try {
+        const ownerUrl = new URL(field.descriptor.frameUrl ?? state.result.page.url);
+        const scope: MappingScope = input.scopeKind === 'global' ? { kind: 'global' } : input.scopeKind === 'host' ? { kind: 'host', host: ownerUrl.host } : { kind: 'path', host: ownerUrl.host, path: ownerUrl.pathname };
+        const frameIdentity = input.scopeKind === 'global' ? undefined : field.descriptor.frameIdentity;
+        await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, scope, field.descriptor.sectionIndex, frameIdentity), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, sectionIndex: field.descriptor.sectionIndex, frameIdentity, createdAt: new Date().toISOString() });
+        setMappings(await mappingStore.list());
+      } catch (error) {
+        const rolledBack = await profileStore.update((latest) => { const fields = { ...latest.fields }; if (previousField) fields[input.profileKey] = previousField; else delete fields[input.profileKey]; return { ...latest, fields }; });
+        setProfile(rolledBack);
+        throw error;
+      }
     }
-    const pageUrl = new URL(state.result.page.url);
-    const scope: MappingScope = input.scopeKind === 'global' ? { kind: 'global' } : input.scopeKind === 'host' ? { kind: 'host', host: state.result.page.host } : { kind: 'path', host: state.result.page.host, path: pageUrl.pathname };
-    await mappingStore.upsert({ id: createMappingId(field.descriptor.fingerprint, scope, field.descriptor.sectionIndex), scope, fingerprint: field.descriptor.fingerprint, profileKey: input.profileKey, sectionIndex: field.descriptor.sectionIndex, createdAt: new Date().toISOString() });
-    setMappings(await mappingStore.list());
   }
 
   async function saveCustomField(field: ProfileField, previousKey?: string) {
-    if (previousKey && previousKey !== field.key) await mappingStore.deleteByProfileKey(previousKey);
     const next = { ...profile, fields: { ...profile.fields } };
     if (previousKey && previousKey !== field.key) delete next.fields[previousKey];
     next.fields[field.key] = field;
-    await saveProfile(next);
+    await saveProfileWithMappingRemaps(next, previousKey && previousKey !== field.key ? [{ [previousKey]: null }] : [], profileStore, mappingStore);
+    setProfile(next);
     setMappings(await mappingStore.list());
   }
 
   async function deleteCustomField(key: string) {
     const next = { ...profile, fields: { ...profile.fields } };
     delete next.fields[key];
-    await Promise.all([profileStore.save(next), mappingStore.deleteByProfileKey(key)]);
+    await saveProfileWithMappingRemaps(next, [{ [key]: null }], profileStore, mappingStore);
     setProfile(next);
     setMappings(await mappingStore.list());
   }
@@ -212,7 +224,8 @@ export default function App() {
     if (kind !== 'global' && !host) throw new Error('请先扫描目标网站，再改为网站或页面作用域');
     if (kind === 'path' && !path) throw new Error('请先扫描目标页面，再改为页面作用域');
     const scope: MappingScope = kind === 'global' ? { kind } : kind === 'host' ? { kind, host: host! } : { kind, host: host!, path: path! };
-    await mappingStore.updateMapping(mapping.id, { ...mapping, id: createMappingId(mapping.fingerprint, scope, mapping.sectionIndex), scope });
+    const frameIdentity = kind === 'global' ? undefined : mapping.frameIdentity;
+    await mappingStore.updateMapping(mapping.id, { ...mapping, id: createMappingId(mapping.fingerprint, scope, mapping.sectionIndex, frameIdentity), scope, frameIdentity });
     setMappings(await mappingStore.list());
   }
 
@@ -247,7 +260,8 @@ export default function App() {
       const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target }) as RuntimeCommandResponse;
       if (!response.ok || !('filled' in response.data)) throw response.ok ? new Error('invalid-fill-result') : response.error;
       const summary = response.data as FillSummary;
-      setLastApplication(draft);
+      const pending = await savePendingApplicationForPage(scanResult.page);
+      setLastApplication({ ...draft, pendingTargetKey: pending.targetKey, updatedAt: pending.updatedAt });
       dispatch({ type: 'fill_succeeded', summary });
     } catch (cause) {
       if (isSessionInvalidation(cause)) {
@@ -267,7 +281,7 @@ export default function App() {
     if (state.kind !== 'review' || !state.result.target) throw new Error('当前扫描结果没有绑定页面，请重新扫描。');
     if (!targetActive) throw new Error('目标页未激活，请返回已扫描的招聘页后再打开预览。');
     const session = buildFillPreviewSession(state.result, profile, fields);
-    await browser.storage.session.set({ [previewStorageKey(session.id)]: session });
+    await storePreviewSession(browser.storage.session, session);
     const previewUrl = extensionUrl(`preview.html?id=${encodeURIComponent(session.id)}&embedded=1`);
     try {
       await openPreviewInTargetTab(browser.tabs as Parameters<typeof openPreviewInTargetTab>[0], state.result.target, session.id, previewUrl);
@@ -278,7 +292,7 @@ export default function App() {
 
   async function openProfilePreview() {
     const session = buildProfilePreviewSession(profile);
-    await browser.storage.session.set({ [previewStorageKey(session.id)]: session });
+    await storePreviewSession(browser.storage.session, session);
     await browser.tabs.create({ url: extensionUrl(`preview.html?id=${encodeURIComponent(session.id)}`) });
   }
 
@@ -286,18 +300,50 @@ export default function App() {
     await browser.tabs.create({ url: extensionUrl('options.html') });
   }
 
-  async function openApplications() {
-    await browser.tabs.create({ url: extensionUrl('applications.html') });
+  async function openApplications(recordId?: string) {
+    const query = recordId ? `?id=${encodeURIComponent(recordId)}` : '';
+    await browser.tabs.create({ url: extensionUrl(`applications.html${query}`) });
   }
 
   async function beginManualApplicationRecord() {
     setNotice('');
     try {
       const target = await currentPageTarget();
+      const pendingMatch = await matchPendingApplications(target.url);
+      if (pendingMatch.candidates.length) {
+        const pendingCandidates = pendingMatch.candidates.map((candidate) => ({ ...candidate, pendingTargetKey: candidate.targetKey }));
+        setManualApplicationCandidates(pendingMatch.kind === 'multiple-host' ? pendingCandidates : []);
+        setManualApplication(pendingMatch.selected
+          ? { ...pendingMatch.selected, pendingTargetKey: pendingMatch.selected.targetKey }
+          : { company: '', role: '', url: target.url, sourceHost: new URL(target.url).host });
+        setManualApplicationSource('pending');
+        return;
+      }
+
+      const response = await browser.runtime.sendMessage({ type: 'extract-application-candidates', target }) as RuntimeCommandResponse;
+      if (!response.ok) throw response.error;
+      if (!Array.isArray(response.data)) throw new Error('投递候选响应无效');
+      const pageCandidates = (response.data as ApplicationCandidate[]).map((candidate) => ({
+        company: candidate.company,
+        role: candidate.role,
+        url: candidate.url || target.url,
+        sourceHost: new URL(candidate.url || target.url).host,
+        urlIsCurrentPage: !candidate.url,
+      }));
+      setManualApplicationCandidates(pageCandidates.length > 1 ? pageCandidates : []);
+      if (pageCandidates.length === 1) {
+        setManualApplication(pageCandidates[0]);
+        setManualApplicationSource('page-auto');
+        return;
+      }
       const page = scanResult?.page.url === target.url
         ? scanResult.page
         : { url: target.url, host: new URL(target.url).host, title: target.title };
-      setManualApplication(applicationDraft(page));
+      const inferred = applicationDraft(page);
+      setManualApplication(pageCandidates.length > 1
+        ? { company: '', role: '', url: target.url, sourceHost: new URL(target.url).host, urlIsCurrentPage: true }
+        : { ...inferred, role: '', urlIsCurrentPage: true });
+      setManualApplicationSource(pageCandidates.length > 1 ? 'page-selected' : 'manual');
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : '无法读取当前招聘页面');
     }
@@ -309,13 +355,19 @@ export default function App() {
 
   async function recordApplication(draft: ApplicationDraft) {
     const input: NewApplicationRecord = { ...draft };
-    return applicationStore.create(input);
+    const created = await applicationStore.create(input);
+    if (draft.pendingTargetKey) {
+      await clearPendingApplication({ targetKey: draft.pendingTargetKey });
+      if (lastApplication?.pendingTargetKey === draft.pendingTargetKey) setLastApplication(undefined);
+    }
+    return created;
   }
 
   return <main className="sidepanel-page">
     <header className="app-header"><div className="brand-mark">简</div><div><h1>简历填写助手</h1><p>本地存储 · 确认填写 · 绝不自动提交</p></div></header>
-    <nav className="primary-nav" aria-label="主要导航"><button className={view === 'assistant' ? 'active' : ''} onClick={() => setView('assistant')}>填写助手</button><button className={view === 'profile' ? 'active' : ''} onClick={() => setView('profile')}>我的资料</button><button className={view === 'custom' ? 'active' : ''} onClick={() => setView('custom')}>自定义字段</button><button onClick={() => void openApplications()}>投递记录</button></nav>
+    <nav className="primary-nav" aria-label="主要导航"><button className={view === 'assistant' ? 'active' : ''} aria-current={view === 'assistant' ? 'page' : undefined} onClick={() => setView('assistant')}>填写助手</button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => setView('profile')}>我的资料</button><button className={view === 'custom' ? 'active' : ''} aria-current={view === 'custom' ? 'page' : undefined} onClick={() => setView('custom')}>自定义字段</button><button className={view === 'applications' ? 'active' : ''} aria-current={view === 'applications' ? 'page' : undefined} onClick={() => setView('applications')}>投递记录</button></nav>
     {notice && <p className="notice" role="alert">{notice}</p>}
+    {view === 'applications' && <ApplicationRecordsPanel store={applicationStore} onOpenManager={(recordId) => void openApplications(recordId)} />}
     {view === 'profile' && <QuickProfileEditor profile={profile} onSave={saveProfile} onOpenFull={() => void openFullProfile()} onPreview={() => void openProfilePreview()} />}
     {view === 'custom' && <CustomFieldsManager profile={profile} mappings={mappings} onSave={saveCustomField} onDelete={deleteCustomField} onUpdateMapping={updateMappingScope} onDeleteMapping={deleteMapping} />}
     {view === 'assistant' && <>
@@ -323,14 +375,14 @@ export default function App() {
       <section className="scan-card card"><div><strong>{scanResult ? scanResult.page.title || scanResult.page.host : '扫描当前招聘页面'}</strong><span>{scanResult ? scanResult.page.url : '仅扫描当前显示的网页'}</span></div><button type="button" onClick={() => void scan()} disabled={state.kind === 'scanning'}>{state.kind === 'scanning' ? '正在扫描…' : scanResult ? '重新扫描' : '扫描当前页面'}</button></section>
       {state.kind !== 'invalidated' && newFieldCount > 0 && <section className="new-fields-alert" role="status"><span><strong>发现 {newFieldCount} 个新字段</strong><small>页面步骤或经历区块已变化，重新扫描不会自动填写或提交。</small></span><button type="button" onClick={() => void scan()}>重新扫描</button></section>}
       <section className="manual-application-card card"><strong>已经完成投递？</strong><button type="button" onClick={() => void beginManualApplicationRecord()}>确认已完成投递</button></section>
-      {manualApplication && <ApplicationRecordPrompt draft={manualApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
+      {manualApplication && <ApplicationRecordPrompt draft={manualApplication} candidates={manualApplicationCandidates} source={manualApplicationSource} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={(recordId) => void openApplications(recordId)} />}
       {activeTarget && state.kind !== 'invalidated' && !targetActive && <section className="target-suspended card" role="status"><strong>目标页未激活</strong><span>扫描结果已保留。请返回已扫描的招聘页，无需重新扫描。</span></section>}
       {state.kind === 'invalidated' && <section className="invalidated-card card" role="alert" aria-labelledby="invalidated-title"><div><h2 id="invalidated-title">页面已变化，请重新扫描</h2><p>旧扫描结果已停用，重新扫描后才能继续定位、预览或填写。</p></div><button type="button" className="primary-button" onClick={() => void scan()}>重新扫描当前页面</button></section>}
       {state.kind === 'review' && <ReviewPanel result={state.result} profile={profile} selected={selected} setSelected={setSelected} onFill={(fields) => void fill(fields)} onPreview={openFillPreview} onSaveMapping={saveMapping} onLocate={locate} onRescan={scan} targetActive={targetActive} />}
       {state.kind === 'filling' && <div className="loading-card card" role="status"><span className="spinner" />正在填写 {state.fields.length} 个字段…</div>}
       {state.kind === 'result' && <>
         <FillResultPanel result={state.result} fields={state.fields} summary={state.summary} onRetry={(fields) => void fill(fields)} onLocate={(fieldId) => void locate(fieldId)} onRescan={() => void scan()} targetActive={targetActive} />
-        {lastApplication && <ApplicationRecordPrompt draft={lastApplication} onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={() => void openApplications()} />}
+        {lastApplication && <ApplicationRecordPrompt draft={lastApplication} source="pending" onFindDuplicates={findDuplicateApplications} onRecord={recordApplication} onOpenManager={(recordId) => void openApplications(recordId)} />}
       </>}
     </>}
   </main>;

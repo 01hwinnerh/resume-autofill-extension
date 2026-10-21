@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createLabelResolutionContext,
   resolveLabel,
   resolveSectionLabel,
 } from '../../../src/form-engine/label-resolver';
@@ -73,6 +74,18 @@ describe('label resolver', () => {
     innerRoot.innerHTML = '<label>院校名称<input id="shadow-school"></label>';
 
     expect(resolveSectionLabel(innerRoot.querySelector('#shadow-school')!)).toBe('教育经历');
+  });
+
+  it('indexes labels once and does not scan the full root again for 1000 cache misses', () => {
+    document.body.innerHTML = `<label for="known">Known</label>${Array.from({ length: 1000 }, (_, index) => `<input id="field-${index}">`).join('')}`;
+    const querySelectorAll = vi.spyOn(document, 'querySelectorAll');
+    const context = createLabelResolutionContext();
+
+    for (const input of document.querySelectorAll<HTMLInputElement>('input')) resolveLabel(input, context);
+
+    expect(querySelectorAll.mock.calls.filter(([selector]) => selector === 'label[for]')).toHaveLength(1);
+    expect(querySelectorAll.mock.calls.filter(([selector]) => selector === 'label')).toHaveLength(0);
+    expect(resolveLabel(document.querySelector('#field-999')!, context)).toBe('field-999');
   });
 
   it('uses only explicit semantic section context', () => {

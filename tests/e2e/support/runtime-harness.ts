@@ -30,11 +30,21 @@ async function initialize(frame: Frame): Promise<void> {
 
 async function dispatch(frame: Frame, message: PageMessage): Promise<PageResponse> {
   await initialize(frame);
-  return frame.evaluate(async (currentMessage) => {
+  let response = await frame.evaluate(async (currentMessage) => {
     const listener = (globalThis as { __resumeRuntimeListeners?: Array<(message: PageMessage) => unknown> }).__resumeRuntimeListeners?.[0];
     if (!listener) throw new Error('form runtime listener was not registered');
     return await listener(currentMessage) as PageResponse;
   }, message);
+  while (response.type === 'fill-operation' && response.state === 'running') {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const statusMessage: PageMessage = { type: 'fill-operation-status', requestId: `${message.requestId}-status`, operationId: response.operationId };
+    response = await frame.evaluate(async (currentMessage) => {
+      const listener = (globalThis as { __resumeRuntimeListeners?: Array<(message: PageMessage) => unknown> }).__resumeRuntimeListeners?.[0];
+      return await listener!(currentMessage) as PageResponse;
+    }, statusMessage);
+  }
+  if (response.type === 'fill-operation' && response.state === 'completed') return { type: 'fill-result', requestId: message.requestId, results: response.results! };
+  return response;
 }
 
 export async function runRuntimeMessage(page: Page, message: Extract<PageMessage, { type: 'scan-page' }>): Promise<Extract<PageResponse, { type: 'scan-result' }>>;

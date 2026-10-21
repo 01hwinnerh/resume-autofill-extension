@@ -13,6 +13,7 @@ import type {
 import type { PageMessage } from '../shared/messages';
 import type { FillOutcome, VerificationOutcome } from '../filling/fill-types';
 import { assertScanTarget, type ScanTarget } from './scan-session';
+import { createFrameIdentity } from './frame-identity';
 
 import {
   CONTENT_SCRIPT_TIMEOUT_MS,
@@ -48,10 +49,16 @@ export interface ControllerDependencies {
 
 export interface ApplicationController {
   scanActiveTab(target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<ScanResult>;
-  fillConfirmed(fields: ConfirmedFill[], target?: ScanTarget): Promise<FillSummary>;
+  extractApplicationCandidates(target: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<import('./application-candidate-extractor').ApplicationCandidate[]>;
+  fillConfirmed(fields: ConfirmedFill[], target?: ScanTarget, operationId?: string): Promise<FillSummary>;
+  queryFillOperation(operationId: string, fields: ConfirmedFill[], target: ScanTarget): Promise<FillOperationQuery>;
   focusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }>;
   closeAndFocusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }>;
 }
+
+export type FillOperationQuery =
+  | { operationId: string; state: 'running' | 'unknown' }
+  | { operationId: string; state: 'completed'; summary: FillSummary };
 
 export interface FillSummary {
   filled: string[];
@@ -64,7 +71,7 @@ let requestSequence = 0;
 
 function nextRequestId(prefix: string): string {
   requestSequence += 1;
-  return `${prefix}-${requestSequence}`;
+  return `${prefix}-${crypto.randomUUID()}-${requestSequence}`;
 }
 
 function pageContext(tab: ActiveTab): PageContext & { path: string } {
@@ -107,6 +114,26 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout:
     if (timer) clearTimeout(timer);
   }
 }
+
+function summarizeFillResults(pageResults: Array<import('../shared/messages').PageFillResult>): FillSummary {
+  const summary: FillSummary = { filled: [], verified: [], skippedExisting: [], failed: [] };
+  for (const result of pageResults) {
+    if (result.outcome.status === 'filled') summary.filled.push(result.fieldId);
+    if (result.outcome.status === 'skipped_existing') summary.skippedExisting.push(result.fieldId);
+    if (result.verification?.verified) summary.verified.push(result.fieldId);
+    if (result.outcome.status === 'failed') {
+      summary.failed.push({ fieldId: result.fieldId, reason: result.outcome.reason });
+    } else if (result.verification && !result.verification.verified) {
+      summary.failed.push({
+        fieldId: result.fieldId,
+        reason: result.verification.reason ?? 'field verification failed',
+      });
+    }
+  }
+  return summary;
+}
+
+const FILL_OPERATION_STATUS_TIMEOUT_MS = 1_000;
 
 export function createApplicationController(
   dependencies: ControllerDependencies,
@@ -170,11 +197,11 @@ export function createApplicationController(
     }
   }
 
-  async function sendPageMessage(tabId: number, message: PageMessage, fill: boolean, frameId = 0): Promise<PageResponse> {
+  async function sendPageMessage(tabId: number, message: PageMessage, fill: boolean, frameId = 0, requestTimeoutMs = timeoutMs): Promise<PageResponse> {
     try {
       const response = await withTimeout(
         dependencies.browser.tabs.sendMessage(tabId, message, { frameId }),
-        timeoutMs,
+        requestTimeoutMs,
         () => new RuntimeRequestError(createRuntimeError(
           'CONTENT_SCRIPT_TIMEOUT',
           'The page runtime did not respond in time.',
@@ -189,6 +216,35 @@ export function createApplicationController(
       if (error instanceof RuntimeRequestError) throw error;
       throw toRuntimeError(error, 'CONTENT_SCRIPT_UNAVAILABLE');
     }
+  }
+
+  async function waitForFill(tabId: number, frameId: number, message: Extract<PageMessage, { type: 'fill-fields' }>): Promise<Extract<PageResponse, { type: 'fill-result' }>> {
+    let response: PageResponse | undefined;
+    try {
+      response = await sendPageMessage(tabId, message, true, frameId);
+    } catch (error) {
+      if (error instanceof RuntimeRequestError && !['CONTENT_SCRIPT_TIMEOUT', 'CONTENT_SCRIPT_UNAVAILABLE'].includes(error.code)) throw error;
+    }
+    const deadline = Date.now() + Math.max(30_000, message.fields.length * 4000);
+    while (true) {
+      if (response?.type === 'fill-result') return response;
+      if (response?.type === 'fill-operation') {
+        if (response.operationId !== message.requestId || response.state === 'unknown') break;
+        if (response.state === 'completed' && response.results) return { type: 'fill-result', requestId: message.requestId, results: response.results };
+      } else if (response !== undefined) break;
+      if (Date.now() >= deadline) break;
+      if (response) await new Promise((resolve) => setTimeout(resolve, 250));
+      try {
+        response = await sendPageMessage(
+          tabId,
+          { type: 'fill-operation-status', requestId: nextRequestId('status'), operationId: message.requestId },
+          true,
+          frameId,
+          FILL_OPERATION_STATUS_TIMEOUT_MS,
+        );
+      } catch { break; }
+    }
+    throw new RuntimeRequestError(createRuntimeError('FILL_RESULT_UNKNOWN', '填写结果尚未确认，页面可能仍在处理。请等待并检查页面，不要立即重复填写；刷新后需重新扫描。', false));
   }
 
   async function scanActiveTab(target?: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<ScanResult> {
@@ -216,32 +272,68 @@ export function createApplicationController(
     if (top.result.childFrameCount !== undefined && frameIds.length - 1 < top.result.childFrameCount) {
       frameWarnings.push('部分 iframe 因跨域站点权限或浏览器限制无法访问，其他可访问字段仍可使用。');
     }
-    const fields = scans.flatMap(({ frameId, result }) => result.descriptors.map((field) => ({
-      ...field, tabId: tab.id!, frameId, framePath: frameId === 0 ? [] : [frameId],
-    }))) as PageFieldDescriptor[];
+    const fields = scans.flatMap(({ frameId, result }) => result.descriptors.map((field) => {
+      const frameUrl = field.frameUrl ?? result.frameUrl ?? context.url;
+      const parsedFrameUrl = new URL(frameUrl);
+      return {
+        ...field, tabId: tab.id!, frameId, framePath: frameId === 0 ? [] : field.framePath,
+        frameUrl, frameOrigin: field.frameOrigin ?? parsedFrameUrl.origin,
+        frameIdentity: field.frameIdentity ?? createFrameIdentity({ url: frameUrl, top: frameId === 0 }),
+      };
+    })) as PageFieldDescriptor[];
+    const matchedById = new Map<string, ReturnType<typeof resolveMatches>[number]>();
+    const frameGroups = new Map<string, PageFieldDescriptor[]>();
+    for (const field of fields) {
+      const key = field.frameIdentity ?? field.frameUrl ?? context.url;
+      frameGroups.set(key, [...(frameGroups.get(key) ?? []), field]);
+    }
+    for (const frameFields of frameGroups.values()) {
+      const frameUrl = new URL(frameFields[0]?.frameUrl ?? context.url);
+      const frameContext: PageContext & { path: string } = { url: frameUrl.href, host: frameUrl.host, path: frameUrl.pathname, title: context.title };
+      const frameAdapter = dependencies.adapterRegistry.resolve(frameContext);
+      const resolved = resolveMatches(frameFields, profile, {
+        mappings, pageContext: { host: frameContext.host, path: frameContext.path }, adapterHints: frameAdapter?.discoverHints(frameFields) ?? [],
+      });
+      resolved.forEach((match) => matchedById.set(match.descriptor.fieldId, match));
+    }
     const adapter = dependencies.adapterRegistry.resolve(context);
     return {
       target: {
         tabId: tab.id!, windowId: tab.windowId, url: context.url, title: context.title,
         scannedAt: new Date().toISOString(), scanToken,
-        frames: scans.map(({ frameId, result }) => ({
-          frameId, fingerprint: result.fingerprint ?? '', fieldIds: result.descriptors.map((field) => field.fieldId),
-        })),
+        frames: scans.map(({ frameId, result }) => {
+          const frameUrl = result.frameUrl ?? context.url;
+          const parsed = new URL(frameUrl);
+          const descriptor = result.descriptors[0];
+          return {
+            frameId, frameUrl, frameOrigin: descriptor?.frameOrigin ?? parsed.origin,
+            frameIdentity: descriptor?.frameIdentity ?? createFrameIdentity({ url: frameUrl, top: frameId === 0 }),
+            fingerprint: result.fingerprint ?? '', fieldIds: result.descriptors.map((field) => field.fieldId),
+          };
+        }),
       },
       page: {
         url: context.url, host: context.host, title: context.title,
         ...(top.result.metadata ? { metadata: top.result.metadata } : {}),
       },
       adapterId: top.result.adapterId ?? adapter?.id,
-      fields: resolveMatches(fields, profile, {
-        mappings, pageContext: { host: context.host, path: context.path }, adapterHints: adapter?.discoverHints(fields) ?? [],
-      }),
+      fields: fields.map((field) => matchedById.get(field.fieldId)!),
       repeatSectionWarnings: repeatSectionWarnings(fields, profile),
       frameWarnings,
     };
   }
 
-  async function fillConfirmed(fields: ConfirmedFill[], target?: ScanTarget): Promise<FillSummary> {
+  async function extractCandidates(target: Pick<ScanTarget, 'tabId' | 'windowId' | 'url' | 'title'>): Promise<import('./application-candidate-extractor').ApplicationCandidate[]> {
+    const tab = await targetTab(target);
+    const context = pageContext(tab);
+    if (!/^https?:$/.test(new URL(context.url).protocol)) throw new RuntimeRequestError(createRuntimeError('TAB_UNAVAILABLE', '只能从已绑定的招聘网页提取投递候选。', true));
+    await injectRuntime(tab.id!);
+    const response = await sendPageMessage(tab.id!, { type: 'extract-application-candidates', requestId: nextRequestId('applications') }, false);
+    if (response.type !== 'application-candidates') throw new RuntimeRequestError(createRuntimeError('SCAN_FAILED', '无法读取当前投递页面。', true));
+    return response.candidates;
+  }
+
+  async function fillConfirmed(fields: ConfirmedFill[], target?: ScanTarget, operationId?: string): Promise<FillSummary> {
     const tab = await targetTab(target);
     await injectRuntime(tab.id!);
     const frameTargets = target?.frames?.length ? target.frames : [{ frameId: 0, fingerprint: '', fieldIds: fields.map((field) => field.fieldId) }];
@@ -251,16 +343,15 @@ export function createApplicationController(
       const frameFields = fields.filter((field) => frame.fieldIds.includes(field.fieldId));
       if (!frameFields.length) continue;
       try {
-        const response = await sendPageMessage(tab.id!, {
-          type: 'fill-fields', requestId: nextRequestId('fill'), fields: frameFields,
+        const response = await waitForFill(tab.id!, frame.frameId, {
+          type: 'fill-fields', requestId: operationId ? `${operationId}:${frame.frameId}` : nextRequestId('fill'), fields: frameFields,
           scanToken: target?.scanToken, expectedFingerprint: frame.fingerprint || undefined,
-        }, true, frame.frameId);
-        if (response.type === 'error') throw new RuntimeRequestError(response.error);
+        });
         if (response.type !== 'fill-result') throw new Error('invalid frame fill response');
         pageResults.push(...response.results);
         frameFields.forEach((field) => pending.delete(field.fieldId));
       } catch (error) {
-        if (error instanceof RuntimeRequestError && /重新扫描/.test(error.message)) throw error;
+        if (error instanceof RuntimeRequestError && (['FILL_RESULT_UNKNOWN', 'FILL_IN_PROGRESS'].includes(error.code) || /重新扫描/.test(error.message))) throw error;
         pageResults.push(...frameFields.map((field) => ({
           fieldId: field.fieldId,
           outcome: { status: 'failed' as const, fieldId: field.fieldId, reason: `iframe ${frame.frameId} 无法访问或已导航，请重新扫描` },
@@ -270,21 +361,33 @@ export function createApplicationController(
     }
     for (const fieldId of pending) pageResults.push({ fieldId, outcome: { status: 'failed', fieldId, reason: '字段所属 iframe 不在扫描会话中，请重新扫描' } });
 
-    const summary: FillSummary = { filled: [], verified: [], skippedExisting: [], failed: [] };
-    for (const result of pageResults) {
-      if (result.outcome.status === 'filled') summary.filled.push(result.fieldId);
-      if (result.outcome.status === 'skipped_existing') summary.skippedExisting.push(result.fieldId);
-      if (result.verification?.verified) summary.verified.push(result.fieldId);
-      if (result.outcome.status === 'failed') {
-        summary.failed.push({ fieldId: result.fieldId, reason: result.outcome.reason });
-      } else if (result.verification && !result.verification.verified) {
-        summary.failed.push({
-          fieldId: result.fieldId,
-          reason: result.verification.reason ?? 'field verification failed',
-        });
+    return summarizeFillResults(pageResults);
+  }
+
+  async function queryFillOperation(operationId: string, fields: ConfirmedFill[], target: ScanTarget): Promise<FillOperationQuery> {
+    const tab = await targetTab(target);
+    const frameTargets = target.frames?.length ? target.frames : [{ frameId: 0, fingerprint: '', fieldIds: fields.map((field) => field.fieldId) }];
+    const results: Array<import('../shared/messages').PageFillResult> = [];
+    let running = false;
+    for (const frame of frameTargets) {
+      if (!fields.some((field) => frame.fieldIds.includes(field.fieldId))) continue;
+      try {
+        const frameOperationId = `${operationId}:${frame.frameId}`;
+        const response = await sendPageMessage(tab.id!, {
+          type: 'fill-operation-status', requestId: nextRequestId('status'), operationId: frameOperationId,
+        }, true, frame.frameId, FILL_OPERATION_STATUS_TIMEOUT_MS);
+        if (response.type !== 'fill-operation' || response.operationId !== frameOperationId || response.state === 'unknown') {
+          return { operationId, state: 'unknown' };
+        }
+        if (response.state === 'running') running = true;
+        else if (response.results) results.push(...response.results);
+      } catch {
+        return { operationId, state: 'unknown' };
       }
     }
-    return summary;
+    return running
+      ? { operationId, state: 'running' }
+      : { operationId, state: 'completed', summary: summarizeFillResults(results) };
   }
 
   async function focusField(fieldId: string, target?: ScanTarget): Promise<{ fieldId: string; focused: boolean }> {
@@ -314,7 +417,7 @@ export function createApplicationController(
     return focusField(fieldId, target);
   }
 
-  return { scanActiveTab, fillConfirmed, focusField, closeAndFocusField };
+  return { scanActiveTab, extractApplicationCandidates: extractCandidates, fillConfirmed, queryFillOperation, focusField, closeAndFocusField };
 }
 
 export function handleRuntimeCommand(
@@ -323,11 +426,15 @@ export function handleRuntimeCommand(
 ): Promise<RuntimeCommandResponse> {
   const operation = command.type === 'scan-active-tab'
     ? controller.scanActiveTab(command.target)
+    : command.type === 'extract-application-candidates'
+      ? controller.extractApplicationCandidates(command.target)
     : command.type === 'fill-confirmed-fields'
-      ? controller.fillConfirmed(command.fields, command.target)
-      : command.type === 'close-and-focus-active-field'
-        ? controller.closeAndFocusField(command.fieldId, command.target)
-        : controller.focusField(command.fieldId, command.target);
+      ? controller.fillConfirmed(command.fields, command.target, command.operationId)
+      : command.type === 'query-fill-operation'
+        ? controller.queryFillOperation(command.operationId, command.fields, command.target)
+        : command.type === 'close-and-focus-active-field'
+          ? controller.closeAndFocusField(command.fieldId, command.target)
+          : controller.focusField(command.fieldId, command.target);
   return operation
     .then((data) => ({ ok: true as const, data }))
     .catch((error: unknown) => {

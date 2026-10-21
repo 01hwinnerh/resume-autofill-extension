@@ -37,8 +37,8 @@ export const FIELD_DICTIONARY: DictionaryField[] = [
   d('educations.$.school', ['学校', '毕业学校', '毕业院校', '就读院校', '院校', '院校名称', 'university', 'school', 'college'], EDUCATION),
   d('educations.$.degree', ['学历', '学位', '最高学历', '学历层次', 'degree', 'education level'], EDUCATION),
   d('educations.$.major', ['专业', '所学专业', 'major', 'field of study'], EDUCATION),
-  d('educations.$.startDate', ['入学时间', '教育开始时间', 'start date', 'from'], EDUCATION),
-  d('educations.$.endDate', ['毕业时间', '教育结束时间', 'graduation date', 'end date', 'to'], EDUCATION),
+  d('educations.$.startDate', ['入学时间', '教育开始时间', '开始时间', 'start date', 'from'], EDUCATION),
+  d('educations.$.endDate', ['毕业时间', '教育结束时间', '结束时间', 'graduation date', 'end date', 'to'], EDUCATION),
   d('educations.$.description', ['教育经历描述', '教育描述', 'education description'], EDUCATION),
   d('educations.$.gpa', ['GPA', '绩点', '平均绩点'], EDUCATION),
   d('educations.$.gpaScale', ['GPA满分制', '绩点满分', 'gpa scale', 'maximum gpa'], EDUCATION),
@@ -58,7 +58,7 @@ export const FIELD_DICTIONARY: DictionaryField[] = [
   d('workExperiences.$.title', ['职位', '岗位', '工作岗位', '岗位名称', '职务', 'job title', 'position', 'title'], WORK, ['organization-title']),
   d('workExperiences.$.startDate', ['入职时间', '工作开始时间', '开始时间', 'start date', 'from'], WORK),
   d('workExperiences.$.endDate', ['离职时间', '工作结束时间', '结束时间', 'end date', 'to'], WORK),
-  d('workExperiences.$.description', ['工作内容', '工作描述', '工作职责', 'job description', 'work description'], WORK),
+  d('workExperiences.$.description', ['工作内容', '工作描述', '工作职责', 'description', 'job description', 'work description'], WORK),
   d('workExperiences.$.department', ['部门', '所在部门', 'department'], WORK),
   d('workExperiences.$.location', ['工作地点', '办公地点', 'work location', 'office location'], WORK),
   d('workExperiences.$.industry', ['行业', '所属行业', 'industry'], WORK),
@@ -94,7 +94,7 @@ export const FIELD_DICTIONARY: DictionaryField[] = [
   d('skills.summary', ['技能', '专业技能', '技能特长', 'skills', 'technical skills'], ['技能', '能力', 'skills']),
   d('skills.english', ['英语', '英语能力', '外语水平', 'english proficiency'], ['技能', '语言能力', 'skills', 'languages']),
   d('summary.selfEvaluation', ['自我评价', '个人总结', '个人优势', 'self evaluation', 'summary'], ['自我评价', '个人总结', 'summary']),
-  d('links.linkedin', ['LinkedIn', 'LinkedIn URL', '领英']), d('links.github', ['GitHub', 'GitHub URL']),
+  d('links.linkedin', ['LinkedIn', 'LinkedIn URL', 'LinkedIn Profile', '领英']), d('links.github', ['GitHub', 'GitHub URL']),
   d('links.website', ['个人网站', '网站', 'website', 'personal website']), d('links.portfolio', ['作品集', '作品集链接', 'portfolio', 'portfolio url']),
 
   // Legacy non-indexed keys remain matchable for existing saved profiles.

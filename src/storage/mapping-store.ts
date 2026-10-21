@@ -1,5 +1,6 @@
 import { createMappingId, inferMappingSectionIndex, normalizeMappingScope, type NormalizedUserFieldMapping, type UserFieldMapping } from '../shared/mapping';
-import { StorageError, UnsupportedSchemaVersionError, type StoragePort } from './storage-port';
+import { CorruptStorageDataError, futureSchema, inspectionFromError, type StorageInspection } from './storage-codec';
+import { StorageError, type StoragePort } from './storage-port';
 
 export const MAPPINGS_KEY = 'resume-autofill.mappings.v1';
 const MAPPINGS_SCHEMA_VERSION = 1 as const;
@@ -28,6 +29,7 @@ export function isUserFieldMapping(value: unknown): value is UserFieldMapping {
   if (typeof mapping.id !== 'string' || !mapping.scope || typeof mapping.scope !== 'object'
     || typeof mapping.fingerprint !== 'string' || typeof mapping.profileKey !== 'string'
     || typeof mapping.createdAt !== 'string'
+    || (mapping.frameIdentity !== undefined && typeof mapping.frameIdentity !== 'string')
     || (mapping.sectionIndex !== undefined && (!Number.isInteger(mapping.sectionIndex) || mapping.sectionIndex < 0))) return false;
   const scope = mapping.scope as Record<string, unknown>;
   if (scope.kind === 'global') return true;
@@ -39,7 +41,7 @@ export function isUserFieldMapping(value: unknown): value is UserFieldMapping {
 function normalizeMapping(mapping: UserFieldMapping): NormalizedUserFieldMapping {
   const scope = normalizeMappingScope(mapping.scope);
   const sectionIndex = mapping.sectionIndex ?? inferMappingSectionIndex(mapping.profileKey);
-  return { ...mapping, id: createMappingId(mapping.fingerprint, scope, sectionIndex), scope, ...(sectionIndex === undefined ? {} : { sectionIndex }) };
+  return { ...mapping, id: createMappingId(mapping.fingerprint, scope, sectionIndex, mapping.frameIdentity), scope, ...(sectionIndex === undefined ? {} : { sectionIndex }) };
 }
 
 function normalizeAndDedupe(mappings: UserFieldMapping[]): NormalizedUserFieldMapping[] {
@@ -52,14 +54,53 @@ function normalizeAndDedupe(mappings: UserFieldMapping[]): NormalizedUserFieldMa
   return [...deduped.values()];
 }
 
-function decode(value: unknown): { mappings: NormalizedUserFieldMapping[]; revision: number } {
-  if (value && typeof value === 'object') {
-    const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
-    if (typeof schemaVersion === 'number' && schemaVersion > MAPPINGS_SCHEMA_VERSION) throw new UnsupportedSchemaVersionError(MAPPINGS_KEY, schemaVersion);
+export class MappingCollisionError extends Error {
+  readonly mappingId: string;
+  constructor(mappingId: string, leftKey: string, rightKey: string) {
+    super(`字段映射碰撞：${mappingId} 同时指向 ${leftKey} 和 ${rightKey}，事务未写入。请先删除或调整其中一条映射。`);
+    this.name = 'MappingCollisionError'; this.mappingId = mappingId;
   }
-  return isMappingEnvelope(value)
-    ? { mappings: normalizeAndDedupe(value.mappings), revision: value.revision ?? 0 }
-    : { mappings: [], revision: 0 };
+}
+
+function sameMappingSemantics(left: NormalizedUserFieldMapping, right: NormalizedUserFieldMapping): boolean {
+  return left.fingerprint === right.fingerprint && left.profileKey === right.profileKey
+    && left.sectionIndex === right.sectionIndex && left.frameIdentity === right.frameIdentity
+    && JSON.stringify(left.scope) === JSON.stringify(right.scope);
+}
+
+function normalizeStrict(mappings: UserFieldMapping[]): NormalizedUserFieldMapping[] {
+  const normalized = new Map<string, NormalizedUserFieldMapping>();
+  for (const item of mappings) {
+    const mapping = normalizeMapping(item); const existing = normalized.get(mapping.id);
+    if (!existing) { normalized.set(mapping.id, mapping); continue; }
+    if (!sameMappingSemantics(existing, mapping)) throw new MappingCollisionError(mapping.id, existing.profileKey, mapping.profileKey);
+  }
+  return [...normalized.values()];
+}
+
+export function remapMappings(mappings: UserFieldMapping[], remaps: ProfileKeyRemap[]): NormalizedUserFieldMapping[] {
+  const remapped = normalizeAndDedupe(mappings).flatMap((mapping) => {
+    let profileKey: string | null = mapping.profileKey;
+    for (const remap of remaps) {
+      if (profileKey !== null && Object.prototype.hasOwnProperty.call(remap, profileKey)) profileKey = remap[profileKey];
+    }
+    if (profileKey === null) return [];
+    const sectionIndex = inferMappingSectionIndex(profileKey);
+    return [{ ...mapping, id: createMappingId(mapping.fingerprint, mapping.scope, sectionIndex, mapping.frameIdentity), profileKey, sectionIndex }];
+  });
+  return normalizeStrict(remapped);
+}
+
+export interface MappingSnapshot { mappings: NormalizedUserFieldMapping[]; revision: number }
+export function mappingEnvelope(mappings: UserFieldMapping[], revision: number): MappingEnvelope {
+  return { schemaVersion: MAPPINGS_SCHEMA_VERSION, revision, mappings: normalizeStrict(mappings) };
+}
+
+function decode(value: unknown): MappingSnapshot {
+  if (value === undefined) return { mappings: [], revision: 0 };
+  futureSchema(MAPPINGS_KEY, value, MAPPINGS_SCHEMA_VERSION);
+  if (!isMappingEnvelope(value)) throw new CorruptStorageDataError(MAPPINGS_KEY, value, '字段映射存储格式无法识别或已损坏');
+  return { mappings: normalizeAndDedupe(value.mappings), revision: value.revision ?? 0 };
 }
 
 export class MappingStore {
@@ -69,6 +110,21 @@ export class MappingStore {
 
   async list(): Promise<NormalizedUserFieldMapping[]> {
     return (await this.read()).mappings;
+  }
+
+  async snapshot(): Promise<MappingSnapshot> {
+    const current = await this.read();
+    return { mappings: structuredClone(current.mappings), revision: current.revision };
+  }
+
+  async inspect(): Promise<StorageInspection> {
+    const raw = await this.storage.get<unknown>(MAPPINGS_KEY);
+    if (raw === undefined) return { key: MAPPINGS_KEY, state: 'missing' };
+    try {
+      const decoded = decode(raw);
+      const legacy = !!raw && typeof raw === 'object' && (raw as { revision?: unknown }).revision === undefined;
+      return { key: MAPPINGS_KEY, state: legacy ? 'legacy' : 'current', raw: structuredClone(raw), schemaVersion: MAPPINGS_SCHEMA_VERSION, message: `revision ${decoded.revision}` };
+    } catch (error) { return inspectionFromError(MAPPINGS_KEY, raw, error); }
   }
 
   subscribe(listener: (mappings: NormalizedUserFieldMapping[]) => void): () => void {
@@ -95,13 +151,7 @@ export class MappingStore {
 
   async remapProfileKeys(remaps: ProfileKeyRemap[]): Promise<void> {
     if (!remaps.length) return;
-    return this.update((mappings) => mappings.flatMap((mapping) => {
-      let profileKey: string | null = mapping.profileKey;
-      for (const remap of remaps) {
-        if (profileKey !== null && Object.prototype.hasOwnProperty.call(remap, profileKey)) profileKey = remap[profileKey];
-      }
-      return profileKey === null ? [] : [{ ...mapping, profileKey, sectionIndex: inferMappingSectionIndex(profileKey) }];
-    }));
+    return this.update((mappings) => remapMappings(mappings, remaps));
   }
 
   async deleteMany(ids: string[]): Promise<void> {
@@ -121,7 +171,7 @@ export class MappingStore {
     try {
       return decode(await this.storage.get<unknown>(MAPPINGS_KEY));
     } catch (cause) {
-      if (cause instanceof UnsupportedSchemaVersionError) throw cause;
+      if (cause instanceof StorageError) throw cause;
       throw new StorageError('read_failed', 'read', MAPPINGS_KEY, cause);
     }
   }
@@ -140,6 +190,7 @@ export class MappingStore {
           await this.storage.set(MAPPINGS_KEY, envelope);
           return;
         } catch (cause) {
+          if (cause instanceof StorageError) throw cause;
           throw new StorageError('write_failed', 'write', MAPPINGS_KEY, cause);
         }
       }

@@ -1,5 +1,6 @@
 export const APPLICATION_STAGE_PRESETS = [
   { id: 'applied', label: '已投递' },
+  { id: 'assessment', label: '测评' },
   { id: 'written_test', label: '笔试' },
   { id: 'interview_1', label: '一面' },
   { id: 'interview_2', label: '二面' },
@@ -48,7 +49,23 @@ export interface NewApplicationEvent {
   note?: string;
 }
 
+export type ApplicationStageTone = 'blue' | 'green' | 'red';
+
+const TERMINAL_STAGE_PATTERN = /未通过|拒绝|拒收|拒聘|不接受|放弃|撤回|终止|淘汰|reject|declin|withdraw|fail/i;
+const OFFER_STAGE_PATTERN = /offer|录用|接受录用|已入职|入职成功|hired|accepted/i;
+
 export function applicationStageLabel(stage: ApplicationStageId, customLabel?: string): string {
   if (stage === 'custom') return customLabel?.trim() || '自定义阶段';
   return APPLICATION_STAGE_PRESETS.find((item) => item.id === stage)?.label ?? stage;
+}
+
+export function applicationStageTone(stage: ApplicationStageId, label?: string): ApplicationStageTone {
+  if (stage === 'rejected' || stage === 'withdrawn') return 'red';
+  if (stage === 'offer') return 'green';
+  if (stage !== 'custom') return 'blue';
+
+  const normalizedLabel = label?.trim() ?? '';
+  if (TERMINAL_STAGE_PATTERN.test(normalizedLabel)) return 'red';
+  if (OFFER_STAGE_PATTERN.test(normalizedLabel)) return 'green';
+  return 'blue';
 }

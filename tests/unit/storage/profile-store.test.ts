@@ -109,14 +109,18 @@ describe('ProfileStore', () => {
     expect(await storage.get('resume-autofill.profile.v1')).toEqual(future);
   });
 
-  it('falls back when a persisted profile field is malformed', async () => {
+  it('rejects malformed persisted profile data and never overwrites it', async () => {
     const storage = new MemoryStorage();
-    await storage.set('resume-autofill.profile.v1', {
+    const corrupt = {
       schemaVersion: 1,
       fields: { email: { key: 'email', label: 'Email', type: 'text' } },
-    });
+    };
+    await storage.set('resume-autofill.profile.v1', corrupt);
+    const store = new ProfileStore(storage);
 
-    await expect(new ProfileStore(storage).load()).resolves.toEqual({ schemaVersion: 1, fields: {} });
+    await expect(store.load()).rejects.toMatchObject({ name: 'CorruptStorageDataError', code: 'corrupt_data' });
+    await expect(store.save({ schemaVersion: 1, fields: {} })).rejects.toMatchObject({ code: 'corrupt_data' });
+    expect(await storage.get('resume-autofill.profile.v1')).toEqual(corrupt);
   });
 
   it('translates storage read failures without exposing field values', async () => {

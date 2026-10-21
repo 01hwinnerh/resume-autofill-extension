@@ -94,7 +94,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .application-confirm p { margin:3px 0 0; color:#6d7890; font-size:11px; }
 .application-fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .application-fields label { display:grid; gap:4px; color:#53627a; font-size:11px; }
+.application-fields .application-url { grid-column:1/-1; }
 .application-fields input { min-width:0; min-height:36px; padding:7px 9px; border:1px solid #dce5f0; border-radius:8px; }
+.application-candidates { display:grid; gap:7px; margin:0; padding:9px; border:1px solid #d8e7fb; border-radius:10px; }
+.application-candidates legend { padding:0 4px; color:#405470; font-size:11px; font-weight:700; }
+.application-candidates label { display:flex; align-items:flex-start; gap:7px; padding:7px; border-radius:8px; background:#f6f9fd; cursor:pointer; }
+.application-candidates label > span { display:grid; min-width:0; }
+.application-candidates small { overflow-wrap:anywhere; color:#718097; font-size:10px; }
+.link-note { padding:7px 9px; border-radius:8px; background:#eef6ff; color:#215f9b !important; }
 .application-actions { display:flex; gap:8px; }
 .application-actions button { flex:1; min-height:38px; padding:0 10px; border:0; border-radius:9px; color:#fff; background:linear-gradient(135deg,#1677ff,#2364d8); font-weight:700; }
 .application-actions .secondary-button { border:1px solid #d8e2ef; color:#405470; background:#fff; }
@@ -153,3 +160,43 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .target-suspended { display:grid; gap:3px; margin-top:10px; padding:11px 12px; border-color:#b8cff0; background:#f2f7ff; color:#285d99; }
 .target-suspended span, .existing-value-safety { color:#58728f; font-size:11px; }
 .existing-value-safety { margin:10px 2px 74px; padding:9px 10px; border-radius:9px; background:#eef5ff; }
+
+
+/* Compact application records view */
+.application-records-panel { display:grid; gap:10px; min-width:0; }
+.application-records-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:3px 2px; }
+.application-records-heading > div { min-width:0; }
+.application-records-heading h2 { margin:0; font-size:18px; }
+.application-records-heading p { margin:2px 0 0; color:#6d7890; font-size:11px; }
+.application-records-heading .secondary-button { flex:none; max-width:130px; padding:6px 10px; line-height:1.25; }
+.application-records-search { display:grid; gap:4px; color:#53627a; font-size:11px; }
+.application-records-search input { width:100%; min-width:0; min-height:38px; padding:7px 10px; border:1px solid #dce5f0; border-radius:9px; background:#fff; color:#172033; }
+.application-records-count, .application-records-limit { margin:0; color:#6d7890; font-size:11px; }
+.application-records-list { display:grid; gap:7px; max-height:310px; margin:0; padding:0; overflow-y:auto; overscroll-behavior:contain; list-style:none; }
+.application-records-list li { min-width:0; }
+.application-record-row { display:flex; width:100%; min-width:0; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid #e2e9f4; border-left:3px solid transparent; border-radius:10px; background:#fff; color:#293956; text-align:left; }
+.application-record-row.active { border-color:#7db3ff; border-left-color:#1677ff; background:#eaf3ff; box-shadow:inset 0 0 0 1px #bed9ff; }
+.application-record-main, .application-record-meta { display:grid; min-width:0; }
+.application-record-main { flex:1; }
+.application-record-main strong, .application-record-main span, .application-record-meta time { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.application-record-main span, .application-record-meta time { color:#718097; font-size:10px; }
+.application-record-meta { flex:0 1 110px; justify-items:end; }
+.application-record-meta b { font-size:10px; }
+.application-stage-chip { width:max-content; max-width:100%; padding:2px 7px; border-radius:999px; font-size:10px; line-height:1.45; }
+.application-stage-chip.stage-tone-blue { color:#1263cc; background:#e9f3ff; }
+.application-stage-chip.stage-tone-green { color:#15743b; background:#e4f7eb; }
+.application-stage-chip.stage-tone-red { color:#b42318; background:#fff0ee; }
+.application-stage-text.stage-tone-blue { color:#1263cc; }
+.application-stage-text.stage-tone-green { color:#15743b; }
+.application-stage-text.stage-tone-red { color:#b42318; }
+.application-records-state { display:grid; gap:3px; padding:20px 14px; color:#65738a; text-align:center; }
+.application-records-state strong { color:#293956; }
+.application-records-error { border-color:#ffd0d0; background:#fff7f7; color:#a13a32; }
+.application-record-detail { display:grid; grid-template-columns:1fr 1fr; gap:9px; padding:12px; }
+.application-record-detail > div { display:grid; min-width:0; }
+.application-record-detail span { color:#718097; font-size:10px; }
+.application-record-detail strong, .application-record-detail time, .application-record-detail small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.application-record-detail time { color:#405470; font-size:11px; }
+.application-record-detail .application-record-latest { grid-column:1/-1; padding-top:8px; border-top:1px solid #edf1f6; }
+.application-record-detail small { color:#718097; font-size:10px; }
+@media (max-width:390px) { .application-records-heading { align-items:stretch; flex-direction:column; } .application-records-heading .secondary-button { width:100%; max-width:none; } .application-record-detail { grid-template-columns:1fr; } .application-record-detail .application-record-latest { grid-column:auto; } }

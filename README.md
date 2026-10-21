@@ -1,102 +1,86 @@
 # 简历填写助手
 
-一个本地运行的 Chrome 简历自动填写扩展：扫描招聘表单、匹配本地资料、预览确认后填写，**不会自动提交申请**。
+一个本地优先、确认优先的 Chrome MV3 简历填写扩展：扫描招聘表单、匹配本地资料、页内预览确认后填写，**不会自动提交申请**。
 
-## 功能亮点
+## 当前能力
 
-- **智能扫描**：识别招聘页面中的文本、数字、日期、月份、下拉框和 Combobox 字段。
-- **自动匹配**：根据字段名称、上下文和页面结构匹配姓名、联系方式、教育、工作及项目经历。
-- **空资料识别**：个人资料未填写时仍能识别页面字段，并明确提示需要补充的资料。
-- **填写前预览**：集中展示页面当前值、待填值、匹配依据和置信度。
-- **直接修改**：可在预览页修改待填值，修改结果自动同步到本地个人资料。
-- **安全填写**：保留页面已有内容，填写后逐项校验，失败时给出中文原因和处理建议。
-- **下拉框保护**：原生下拉和 Combobox 仅在候选项精确且唯一匹配时自动选择。
-- **复杂表单支持**：支持动态字段、同源 iframe、Formily 表单和多段教育/工作/项目经历。
-- **自定义字段**：可新增招聘网站特有字段，并保存为以后可复用的资料项。
-- **字段映射管理**：可查看、筛选、修改和删除已学习的映射，并设置对所有网站、当前网站或当前页面生效。
-- **配置迁移**：支持明文 JSON 导出与导入，换电脑后可快速恢复个人资料、填写策略和字段映射。
-- **投递记录**：手动确认投递后可记录公司、职位、阶段、备注和状态时间线。
-- **ATS 兼容基线**：包含 Greenhouse、Lever、Workday 风格的本地测试页面和自动化测试。
-- **本地优先**：资料保存在当前 Chrome 扩展的本地存储中，不依赖后端、账号或云服务。
+- 扫描标准控件、同源/获授权的跨域 iframe 与 open Shadow DOM；支持动态页面重新扫描。
+- 通用字段匹配、多段教育/工作/项目经历、Formily、原生下拉与 Combobox；现有站点专用 Adapter 只有 ByteDance Jobs。
+- 在招聘页内显示 preview，用户确认后才填写；保留已有值，逐字段校验，不自动上传文件或提交。
+- 资料、自定义字段、填写策略与字段映射保存在 `chrome.storage.local`。
+- V2 明文 JSON 备份包含个人资料、映射和投递记录；V1 备份仍可导入。导入通过 transaction journal 协调恢复，失败时阻止部分覆盖。
+- 填写后保存 pending application draft；用户真实提交后仍需手动确认，才会写入投递记录与阶段时间线。
+- Playwright 同时覆盖 runtime harness 和加载真实构建产物的扩展 E2E。
 
-## 安装
+## 安装与更新
 
-要求：Node.js 20+、npm、Google Chrome。
+要求：Node.js 20+、npm、Google Chrome。仓库以 `package-lock.json` / npm 为唯一包管理基线。
 
 ```bash
 git clone git@github.com:01hwinnerh/resume-autofill-extension.git
 cd resume-autofill-extension
-npm install
+npm ci
 npm run build
 ```
 
-然后在 Chrome 中加载：
+在 `chrome://extensions` 开启“开发者模式”，选择“加载已解压的扩展程序”，加载 `.output/chrome-mv3`。更新代码后执行 `npm ci && npm run build`，在扩展页点击“重新加载”，再刷新招聘页面。
 
-1. 打开 `chrome://extensions`。
-2. 开启右上角“开发者模式”。
-3. 点击“加载已解压的扩展程序”。
-4. 选择项目中的 `.output/chrome-mv3` 目录。
+## 使用
 
-## 使用方法
+1. 在“我的资料”维护资料，打开招聘申请页。
+2. 在侧边栏点击“扫描当前页面”；检查目标标签页、iframe 警告和字段结果。
+3. 选择字段并打开页内 preview，确认或修改后填写。
+4. 人工处理附件、验证码及最终提交。
+5. 真实提交完成后，由用户手动确认并保存投递记录。
 
-1. 打开扩展的“我的资料”，填写个人信息、教育经历、工作经历和项目经历。
-2. 打开招聘网站的申请页面，在扩展侧边栏点击“扫描当前页面”。
-3. 检查识别结果，选择需要填写的字段并进入预览。
-4. 在预览页确认或修改待填值，然后点击“确认填写”。
-5. 返回招聘页面检查结果，手动上传文件、处理验证并提交申请。
-6. 提交完成后，可在侧边栏手动记录本次投递。
+## 权限与用户触发边界
 
-## 更新扩展
+| 权限 | 用途与边界 |
+| --- | --- |
+| `activeTab` | 用户在侧边栏发起扫描/填写时确定当前目标标签页；不用于后台轮询。 |
+| `scripting` | 在该次用户操作绑定的标签页和可访问 frame 注入 `form-runtime.js`。 |
+| `storage` | 在扩展本地保存资料、映射、投递记录、pending draft、preview session 与恢复 journal。 |
+| `sidePanel` | 提供扫描、复核和填写入口。 |
+| `http://*/*`、`https://*/*` host permissions | Chrome 对跨域 iframe 注入要求显式 host access；仍只在用户点击扫描/填写后执行，不表示后台采集。 |
 
-```bash
-git pull
-npm install
-npm run build
-```
+浏览器拒绝权限、受限页面（如 `chrome://`）或不可访问 frame 会被明确提示。单个 frame 不可访问时，UI 显示“部分 iframe 已跳过”，可访问 frame 的结果仍保留；整页注入失败时提示检查网站权限。扩展不在后台采集页面内容，也不会把完整资料发送到远程服务器。
 
-构建完成后，回到 `chrome://extensions`，点击该扩展的“重新加载”，再刷新招聘页面。
+## 仿真回归覆盖
 
-## 跨电脑迁移配置
+`tests/fixtures/` 中 Greenhouse/Lever/Workday 风格页、通用页、组件页和 third-round 页用于**仿真回归覆盖**。`npm run evaluate:matching` 对版本化标注 corpus 检查 `profileKey/status/sectionIndex`，并与分组阈值快照比较：8 组 HTML fixture 计入 scanner + matcher；仓库没有 ByteDance 脱敏 HTML，其既有测试描述符明确标记为 descriptor-only，只计入 matcher-only，不混入 scanner 指标。
 
-- **导出**：进入“我的资料” → “完整资料中心” → “配置迁移”，点击“导出配置 JSON”。
-- **导入**：在新电脑加载扩展后进入同一位置，选择 JSON 文件并确认替换导入。
+这些指标不是、也不得表述为真实线上准确率。新增平台 Adapter 前必须先提供可复现的真实页面证据，并将去标识、去个人信息的最小 HTML/descriptor 样本及版本化标注加入 corpus；没有样本时只维护通用匹配，不新增猜测性 Adapter。
 
-配置文件包含个人资料、自定义字段、填写策略和字段映射，不包含投递记录、扫描结果或临时预览会话。
-
-> 配置 JSON 是明文文件，请仅保存在可信设备或自己的私有仓库中。
-
-## 本地测试页面
-
-启动测试服务：
+本地 fixture 服务：
 
 ```bash
 npm run fixtures:serve -- --port 4173
 ```
 
-- 全功能验收页：`http://127.0.0.1:4173/all-features-ats.html`
-- Greenhouse 仿真页：`http://127.0.0.1:4173/greenhouse-ats.html`
-- Lever 仿真页：`http://127.0.0.1:4173/lever-ats.html`
-- Workday 仿真页：`http://127.0.0.1:4173/workday-ats.html`
+常用页面包括 `/all-features-ats.html`、`/greenhouse-ats.html`、`/lever-ats.html`、`/workday-ats.html`、`/component-ats.html` 和 `/third-round-ats.html`。
 
-## 常用命令
+## 开发与验证
 
 ```bash
-npm run dev        # 启动开发模式
-npm run build      # 构建 Chrome 扩展
-npm run zip        # 生成扩展 ZIP 分发包
-npm test           # 运行单元测试
-npm run typecheck  # 运行 TypeScript 检查
-npm run e2e        # 运行端到端测试
+npm run dev
+npm run typecheck
+npm test                       # 等价于 test:unit
+npm run test:unit
+npm run test:e2e-extension     # 等价于 e2e；构建并加载真实扩展
+npm run evaluate:matching      # 离线仿真匹配回归
+npm run bench:forms            # 100/300/1000 控件，多轮 p50/p95
+npm run build
+npm run zip
 ```
+
+质量基线与限制见 [`docs/quality-baseline.md`](docs/quality-baseline.md)。
 
 ## 安全边界
 
-- 不自动提交招聘申请。
-- 不自动上传简历或其他文件。
-- 不处理验证码、短信验证、登录或 OAuth。
-- 跨域 iframe 权限仅在用户主动扫描或填写时使用，不会在后台采集页面内容。
-- 不自动创建页面中尚不存在的重复经历区块。
-- 不会把完整个人资料发送到远程服务器。
+- 不自动提交、上传文件、处理验证码、短信验证、登录或 OAuth。
+- 不创建页面中尚不存在的重复经历区块。
+- 扫描结果绑定目标 tab/URL；页面变化、不可访问或会话失效时阻止继续填写并要求重扫。
+- JSON 备份为明文，只应保存在可信设备。
 
 ## 技术栈
 

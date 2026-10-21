@@ -43,6 +43,115 @@ function dependencies(browser: BrowserPort, timeoutMs = 5000, adapterRegistry = 
 }
 
 describe('application controller', () => {
+  it('queries the original operation after a lost acknowledgement instead of filling twice', async () => {
+    let writes = 0;
+    const browser = {
+      tabs: {
+        query: async () => [{ id: 7, url: 'https://job.test/app' }],
+        sendMessage: async (_tab: number, message: PageMessage): Promise<PageResponse> => {
+          if (message.type === 'fill-fields') { writes += 1; return new Promise(() => {}); }
+          if (message.type === 'fill-operation-status') return {
+            type: 'fill-operation', requestId: message.requestId, operationId: message.operationId, state: 'completed',
+            results: [{ fieldId: 'email', outcome: { status: 'filled', fieldId: 'email' }, verification: { fieldId: 'email', verified: true } }],
+          };
+          throw new Error('unexpected command');
+        },
+      },
+      scripting: { executeScript: async () => undefined },
+    } satisfies BrowserPort;
+    const result = await createApplicationController(dependencies(browser, 10)).fillConfirmed([
+      { fieldId: 'email', profileKey: 'contact.email', value: 'candidate@example.test' },
+    ]);
+    expect(result.verified).toEqual(['email']);
+    expect(writes).toBe(1);
+  });
+
+  it('waits for a slow operation without treating the running fields as failed', async () => {
+    vi.useFakeTimers();
+    try {
+      let checks = 0;
+      const browser = {
+        tabs: {
+          query: async () => [{ id: 7, url: 'https://job.test/app' }],
+          sendMessage: async (_tab: number, message: PageMessage): Promise<PageResponse> => {
+            if (message.type === 'fill-fields') return { type: 'fill-operation', requestId: message.requestId, operationId: message.requestId, state: 'running' };
+            if (message.type === 'fill-operation-status') {
+              checks += 1;
+              return { type: 'fill-operation', requestId: message.requestId, operationId: message.operationId,
+                state: checks < 25 ? 'running' : 'completed', results: checks < 25 ? undefined : [{ fieldId: 'email', outcome: { status: 'filled', fieldId: 'email' }, verification: { fieldId: 'email', verified: true } }] };
+            }
+            throw new Error('unexpected command');
+          },
+        },
+        scripting: { executeScript: async () => undefined },
+      } satisfies BrowserPort;
+      const filling = createApplicationController(dependencies(browser)).fillConfirmed([{ fieldId: 'email', profileKey: 'contact.email', value: 'candidate@example.test' }]);
+      await vi.advanceTimersByTimeAsync(7000);
+      expect((await filling).verified).toEqual(['email']);
+      expect(checks).toBe(25);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('queries a known operation without issuing another fill and merges its completed result', async () => {
+    const sendMessage = vi.fn(async (_tab: number, message: PageMessage): Promise<PageResponse> => {
+      if (message.type !== 'fill-operation-status') throw new Error('unexpected command');
+      return {
+        type: 'fill-operation', requestId: message.requestId, operationId: message.operationId, state: 'completed',
+        results: [{ fieldId: 'email', outcome: { status: 'filled', fieldId: 'email' }, verification: { fieldId: 'email', verified: true } }],
+      };
+    });
+    const browser = {
+      tabs: { query: async () => [], get: async () => ({ id: 7, url: 'https://job.test/app' }), sendMessage },
+      scripting: { executeScript: async () => undefined },
+    } satisfies BrowserPort;
+    const target = { tabId: 7, url: 'https://job.test/app', title: 'Apply', scannedAt: '2026-09-15T10:00:00.000Z', frames: [{ frameId: 0, fingerprint: 'top', fieldIds: ['email'] }] };
+
+    await expect(createApplicationController(dependencies(browser)).queryFillOperation('preview-1', [
+      { fieldId: 'email', profileKey: 'contact.email', value: 'candidate@example.test' },
+    ], target)).resolves.toEqual({
+      operationId: 'preview-1', state: 'completed',
+      summary: { filled: ['email'], verified: ['email'], skippedExisting: [], failed: [] },
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage.mock.calls[0]?.[1]).toMatchObject({ type: 'fill-operation-status', operationId: 'preview-1:0' });
+  });
+
+  it('returns unknown after the independent short status timeout when a frame does not respond', async () => {
+    vi.useFakeTimers();
+    try {
+      const browser = {
+        tabs: {
+          query: async () => [],
+          get: async () => ({ id: 7, url: 'https://job.test/app' }),
+          sendMessage: async () => new Promise<PageResponse>(() => {}),
+        },
+        scripting: { executeScript: async () => undefined },
+      } satisfies BrowserPort;
+      const target = { tabId: 7, url: 'https://job.test/app', title: 'Apply', scannedAt: '2026-09-15T10:00:00.000Z', frames: [{ frameId: 0, fingerprint: 'top', fieldIds: ['email'] }] };
+      const querying = createApplicationController(dependencies(browser, 60_000)).queryFillOperation('preview-timeout', [
+        { fieldId: 'email', profileKey: 'contact.email', value: 'candidate@example.test' },
+      ], target);
+      await vi.advanceTimersByTimeAsync(1_001);
+      await expect(querying).resolves.toEqual({ operationId: 'preview-timeout', state: 'unknown' });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('preserves FILL_IN_PROGRESS instead of converting it to frame failures', async () => {
+    const browser = {
+      tabs: {
+        query: async () => [{ id: 7, url: 'https://job.test/app' }],
+        sendMessage: async (_tab: number, message: PageMessage): Promise<PageResponse> => ({
+          type: 'error', requestId: message.requestId,
+          error: { code: 'FILL_IN_PROGRESS', message: 'still filling', retryable: false },
+        }),
+      },
+      scripting: { executeScript: async () => undefined },
+    } satisfies BrowserPort;
+    await expect(createApplicationController(dependencies(browser)).fillConfirmed([
+      { fieldId: 'email', profileKey: 'contact.email', value: 'candidate@example.test' },
+    ])).rejects.toMatchObject({ code: 'FILL_IN_PROGRESS' });
+  });
+
   it('scans without sending profile values to the page', async () => {
     const sendMessage = vi.fn(async (_tabId: number, message: PageMessage): Promise<PageResponse> => {
       if (message.type !== 'scan-page') throw new Error('unexpected fill command');
@@ -299,5 +408,33 @@ describe('application controller', () => {
     const result = await createApplicationController(dependencies(browser)).scanActiveTab();
     expect(result.fields).toHaveLength(1);
     expect(result.frameWarnings?.join(' ')).toMatch(/iframe 9.*跳过/);
+  });
+});
+
+
+describe('frame-owned adapter context', () => {
+  it('selects adapters from the field frame host rather than the top-level host', async () => {
+    const matches = vi.fn((context: { host: string }) => context.host === 'embedded.vendor.test');
+    const registry = new AdapterRegistry();
+    registry.register({
+      id: 'embedded-adapter', matches,
+      discoverHints: (fields) => fields.map((field) => ({ fieldId: field.fieldId, profileKey: 'contact.email', score: 0.99, reason: 'embedded adapter' })),
+    });
+    const browser = {
+      tabs: {
+        query: vi.fn(async () => [{ id: 7, url: 'https://top.test/apply', title: 'Apply' }]),
+        sendMessage: vi.fn(async (_tabId: number, message: PageMessage, options?: { frameId: number }): Promise<PageResponse> => ({
+          type: 'scan-result', requestId: message.requestId, result: {
+            descriptors: options?.frameId === 4 ? [{ ...descriptor, fieldId: 'embedded-field', label: '', name: undefined, fingerprint: 'unknown' }] : [],
+            frameUrl: options?.frameId === 4 ? 'https://embedded.vendor.test/form/step' : 'https://top.test/apply', fingerprint: `frame-${options?.frameId}`,
+          },
+        })),
+      },
+      scripting: { executeScript: vi.fn(async () => [{ frameId: 0 }, { frameId: 4 }]) },
+    } satisfies BrowserPort;
+
+    const result = await createApplicationController(dependencies(browser, 5000, registry)).scanActiveTab();
+    expect(result.fields[0]?.selected).toMatchObject({ profileKey: 'contact.email', source: 'adapter' });
+    expect(matches).toHaveBeenCalledWith(expect.objectContaining({ host: 'embedded.vendor.test', path: '/form/step' }));
   });
 });

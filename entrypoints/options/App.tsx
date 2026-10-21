@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ProfileStore } from '../../src/profile/profile-store';
 import type { Profile } from '../../src/shared/profile';
+import { ApplicationStore } from '../../src/storage/application-store';
 import { LocalStorage } from '../../src/storage/local-storage';
 import { MappingStore } from '../../src/storage/mapping-store';
 import { PROFILE_FIELDS, PROFILE_SECTION_LABELS, buildProfileField, emptyProfile, experienceDefinitions, profileFieldDefinitions, type ProfileSection, type RepeatableProfileSection } from '../../src/ui/profile-fields';
@@ -13,6 +14,7 @@ import { ProfileSectionCard } from './ProfileSectionCard';
 const storage = new LocalStorage();
 const profileStore = new ProfileStore(storage);
 const mappingStore = new MappingStore(storage);
+const applicationStore = new ApplicationStore(storage);
 const SECTIONS = Object.keys(PROFILE_SECTION_LABELS) as ProfileSection[];
 const REPEATABLE = new Set<ProfileSection>(['education', 'work', 'project']);
 
@@ -46,7 +48,7 @@ export default function App() {
   return <main className="options-page">
     <header className="options-header"><div className="brand-mark">简</div><div><h1>简历资料中心</h1><p>资料仅保存在当前浏览器，填写前仍由你确认</p></div></header>
     <section className="intro-card"><div><strong>完善资料，减少重复填写</strong><span>支持多段教育、工作和项目；页面需已存在对应段落。</span></div><span className="privacy-badge">本地存储</span></section>
-    <ConfigMigrationCard profile={profile} profileStore={profileStore} mappingStore={mappingStore} onImported={imported} />
+    <ConfigMigrationCard profile={profile} profileStore={profileStore} mappingStore={mappingStore} applicationStore={applicationStore} onImported={imported} />
     <MappingManager profile={profile} mappingStore={mappingStore} refreshToken={mappingRevision} />
     <section className="profile-form">{SECTIONS.map((section, index) => <ProfileSectionCard key={section} section={section} fields={grouped[section]} values={values} recordCount={REPEATABLE.has(section) ? counts[section as RepeatableProfileSection] : undefined} defaultOpen={index === 0} onChange={change} onRecordAction={(action, recordIndex) => mutate(section as RepeatableProfileSection, action, recordIndex)} />)}</section>
     <section className="profile-preview"><div><h2>资料预览</h2><p>预览包含尚未保存的修改与全部经历。</p></div>{SECTIONS.filter((section) => ['basic', 'education', 'work', 'project'].includes(section)).map((section) => { const rows = grouped[section].filter((field) => values[field.key]?.trim()); return <article key={section}><h3>{PROFILE_SECTION_LABELS[section]}</h3>{rows.length ? <dl>{rows.map((field) => <div key={field.key}><dt>{field.label}{field.key.match(/\.(\d+)\./) ? ` ${Number(field.key.match(/\.(\d+)\./)![1]) + 1}` : ''}</dt><dd>{values[field.key]}</dd></div>)}</dl> : <p>暂未填写</p>}</article>; })}</section>

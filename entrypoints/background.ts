@@ -2,18 +2,23 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { AdapterRegistry } from '../src/adapters/adapter-registry';
 import { ByteDanceJobsAdapter } from '../src/adapters/bytedance-jobs-adapter';
 import { createApplicationController, handleRuntimeCommand } from '../src/runtime/application-controller';
-import { LocalStorage, STORAGE_COMPARE_AND_SET, storedRevision } from '../src/storage/local-storage';
+import { executeCoordinatedCompareAndSet, executeStorageTransaction, readStorageRecoveryState, recoverStorageTransaction, resolveStorageTransaction, STORAGE_TRANSACTION, STORAGE_TRANSACTION_RECOVERY_STATE, STORAGE_TRANSACTION_RESOLVE, type StorageTransactionRequest, type StorageTransactionResolutionRequest } from '../src/storage/coordinated-transaction';
+import { LocalStorage, STORAGE_COMPARE_AND_SET } from '../src/storage/local-storage';
 import { MappingStore } from '../src/storage/mapping-store';
 import { ProfileStore } from '../src/profile/profile-store';
 import type { RuntimeCommand } from '../src/shared/messages';
 import { browser } from 'wxt/browser';
 
-const CONCURRENT_STORAGE_KEYS = new Set(['resume-autofill.profile.v1', 'resume-autofill.mappings.v1', 'resume-autofill.applications.v1']);
-
 export default defineBackground(() => {
   const storage = new LocalStorage();
   const adapterRegistry = new AdapterRegistry();
   let storageWriteQueue = Promise.resolve();
+  const enqueueStorage = <T,>(work: () => Promise<T>): Promise<T> => {
+    const operation = storageWriteQueue.then(work);
+    storageWriteQueue = operation.then(() => undefined, () => undefined);
+    return operation;
+  };
+  void enqueueStorage(() => recoverStorageTransaction(storage));
   adapterRegistry.register(new ByteDanceJobsAdapter());
   const controller = createApplicationController({
     browser,
@@ -22,19 +27,17 @@ export default defineBackground(() => {
     adapterRegistry,
   });
 
-  browser.runtime.onMessage.addListener((message: RuntimeCommand | { type: typeof STORAGE_COMPARE_AND_SET; key: string; expectedRevision: number; value: unknown }) => {
+  browser.runtime.onMessage.addListener((message: RuntimeCommand | { type: typeof STORAGE_COMPARE_AND_SET; key: string; expectedRevision: number; value: unknown } | { type: typeof STORAGE_TRANSACTION; request: StorageTransactionRequest } | { type: typeof STORAGE_TRANSACTION_RECOVERY_STATE } | { type: typeof STORAGE_TRANSACTION_RESOLVE; request: StorageTransactionResolutionRequest }) => {
+    if (message.type === STORAGE_TRANSACTION) return enqueueStorage(() => executeStorageTransaction(storage, message.request));
+    if (message.type === STORAGE_TRANSACTION_RECOVERY_STATE) return enqueueStorage(async () => {
+      await recoverStorageTransaction(storage);
+      return readStorageRecoveryState(storage);
+    });
+    if (message.type === STORAGE_TRANSACTION_RESOLVE) return enqueueStorage(() => resolveStorageTransaction(storage, message.request));
     if (message.type === STORAGE_COMPARE_AND_SET) {
-      const operation = storageWriteQueue.then(async () => {
-        if (!CONCURRENT_STORAGE_KEYS.has(message.key)) return { ok: false };
-        const current = await storage.get<unknown>(message.key);
-        if (storedRevision(current) !== message.expectedRevision) return { ok: false };
-        await storage.set(message.key, message.value);
-        return { ok: true };
-      });
-      storageWriteQueue = operation.then(() => undefined, () => undefined);
-      return operation;
+      return enqueueStorage(() => executeCoordinatedCompareAndSet(storage, message.key, message.expectedRevision, message.value));
     }
-    if (!['scan-active-tab', 'fill-confirmed-fields', 'focus-active-field', 'close-and-focus-active-field'].includes(message.type)) return undefined;
+    if (!['scan-active-tab', 'extract-application-candidates', 'fill-confirmed-fields', 'query-fill-operation', 'focus-active-field', 'close-and-focus-active-field'].includes(message.type)) return undefined;
     return handleRuntimeCommand(controller, message);
   });
 });

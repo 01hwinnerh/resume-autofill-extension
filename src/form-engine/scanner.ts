@@ -1,7 +1,7 @@
 import type { PageFieldDescriptor, PageFieldKind } from '../shared/form';
 import type { FieldValue } from '../shared/profile';
 import { createFingerprint } from './fingerprint';
-import { composedParentElement, resolveLabel, resolveSectionLabel } from './label-resolver';
+import { composedParentElement, createLabelResolutionContext, resolveLabel, resolveSectionLabel, type LabelResolutionContext } from './label-resolver';
 import { normalizeLabel } from './normalize-label';
 import type { RuntimePageField, ScanContext } from './runtime-types';
 import { isInputElement, isSelectElement, isTextareaElement } from './control-elements';
@@ -57,9 +57,9 @@ function controlsAcrossOpenRoots(document: Document): HTMLElement[] {
 
 function repeatCategory(label: string | undefined): RepeatCategory | undefined {
   const value = normalizeLabel(label);
-  if (/教育|学历|education|academic/.test(value)) return 'education';
-  if (/工作|实习|职业|work|employment|experience/.test(value)) return 'work';
-  if (/项目|project/.test(value)) return 'project';
+  if (/教育|学历|\b(?:education|academic)\b/.test(value)) return 'education';
+  if (/工作|实习|职业|\b(?:work|employment|experience)\b/.test(value)) return 'work';
+  if (/项目|\bproject\b/.test(value)) return 'project';
   return undefined;
 }
 
@@ -177,12 +177,12 @@ function comboboxCurrentValue(element: HTMLInputElement): string {
   return selected?.textContent?.trim() || element.value;
 }
 
-function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFieldKind, currentValue: FieldValue, options: Array<{ label: string; value: string }>, fieldId: string, context: ScanContext, sectionInfo: Map<HTMLElement, SectionInfo>): RuntimePageField {
+function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFieldKind, currentValue: FieldValue, options: Array<{ label: string; value: string }>, fieldId: string, context: ScanContext, sectionInfo: Map<HTMLElement, SectionInfo>, labels: LabelResolutionContext): RuntimePageField {
   const formily = formilyContainer(element);
-  const label = resolveLabel(element);
+  const label = resolveLabel(element, labels);
   const name = optionalAttribute(element, 'name') ?? optionalAttribute(formily ?? element, 'data-form-field-name');
   const htmlId = element.id || formily?.id || undefined;
-  const resolvedSectionLabel = resolveSectionLabel(element); const container = sectionContainer(element); const info = container ? sectionInfo.get(container) : undefined;
+  const resolvedSectionLabel = resolveSectionLabel(element, labels); const container = sectionContainer(element); const info = container ? sectionInfo.get(container) : undefined;
   const sectionLabel = info?.label && repeatCategory(resolvedSectionLabel) ? info.label : resolvedSectionLabel;
   const annotatedIndex = Number.parseInt(element.getAttribute('data-resume-autofill-section-index') ?? '', 10);
   const sectionIndex = Number.isFinite(annotatedIndex) ? annotatedIndex : info?.index;
@@ -191,7 +191,8 @@ function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFie
     label, name, htmlId, placeholder: optionalAttribute(element, 'placeholder'), ariaLabel: optionalAttribute(element, 'aria-label'),
     autocomplete: optionalAttribute(element, 'autocomplete'), options, currentValue, sectionLabel, sectionIndex,
     semanticSource: optionalAttribute(element, 'data-resume-autofill-semantic-source') ?? info?.semanticSource ?? (formily ? 'formily-dom' : undefined),
-    framePath: [...context.framePath],
+    framePath: [...context.framePath], frameUrl: context.frameUrl ?? context.url,
+    frameOrigin: context.frameOrigin, frameIdentity: context.frameIdentity,
     // sectionIndex deliberately stays out of the fingerprint to preserve old saved mappings.
     fingerprint: createFingerprint({ kind, label, name, htmlId, sectionLabel: resolvedSectionLabel, framePath: context.framePath }),
     elements,
@@ -199,7 +200,7 @@ function buildField(element: HTMLElement, elements: HTMLElement[], kind: PageFie
 }
 
 export function scanDocument(document: Document, context: ScanContext): RuntimePageField[] {
-  const fields: RuntimePageField[] = []; const groupedRadios = new Set<HTMLInputElement>();
+  const fields: RuntimePageField[] = []; const groupedRadios = new Set<HTMLInputElement>(); const labels = createLabelResolutionContext();
   const controls = controlsAcrossOpenRoots(document); const sectionInfo = buildSectionInfo(controls);
   for (const control of controls) {
     if (isInputElement(control)) {
@@ -211,16 +212,16 @@ export function scanDocument(document: Document, context: ScanContext): RuntimeP
         const group = controls.filter((candidate): candidate is HTMLInputElement => isInputElement(candidate) && candidate.type.toLowerCase() === 'radio' && candidate.name === control.name && candidate.getRootNode() === root && sectionContainer(candidate) === container && supportedInput(candidate));
         group.forEach((candidate) => groupedRadios.add(candidate));
         const checked = group.find((option) => option.checked);
-        fields.push(buildField(control, group, 'radio', checked?.value ?? null, radioOptions(group), `field-${fields.length + 1}`, context, sectionInfo)); continue;
+        fields.push(buildField(control, group, 'radio', checked?.value ?? null, radioOptions(group), `field-${fields.length + 1}`, context, sectionInfo, labels)); continue;
       }
       const kind: PageFieldKind = control.type.toLowerCase() === 'checkbox' ? 'checkbox' : isComboboxControl(control) ? 'combobox' : 'text';
       const currentValue = kind === 'checkbox' ? control.checked : kind === 'combobox' ? comboboxCurrentValue(control) : control.value;
-      fields.push(buildField(control, [control], kind, currentValue, [], `field-${fields.length + 1}`, context, sectionInfo)); continue;
+      fields.push(buildField(control, [control], kind, currentValue, [], `field-${fields.length + 1}`, context, sectionInfo, labels)); continue;
     }
     if (isTextareaElement(control) && !isDisabled(control) && !isHidden(control)) {
-      fields.push(buildField(control, [control], 'textarea', control.value, [], `field-${fields.length + 1}`, context, sectionInfo)); continue;
+      fields.push(buildField(control, [control], 'textarea', control.value, [], `field-${fields.length + 1}`, context, sectionInfo, labels)); continue;
     }
-    if (isSelectElement(control) && !isDisabled(control) && !isHidden(control)) fields.push(buildField(control, [control], 'select', control.value, optionsFor(control), `field-${fields.length + 1}`, context, sectionInfo));
+    if (isSelectElement(control) && !isDisabled(control) && !isHidden(control)) fields.push(buildField(control, [control], 'select', control.value, optionsFor(control), `field-${fields.length + 1}`, context, sectionInfo, labels));
   }
   return fields;
 }

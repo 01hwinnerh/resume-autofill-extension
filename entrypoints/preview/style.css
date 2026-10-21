@@ -88,3 +88,10 @@ aside small { color: #738098; }
 .save-state.saved { color:#18794e; }
 .save-state.failed { color:#b42318; }
 .retry-save { margin-left:6px; padding:0; border:0; color:#b42318; background:transparent; font-size:11px; font-weight:700; text-decoration:underline; }
+
+.fill-uncertain { display:flex; align-items:center; justify-content:space-between; gap:18px; width:min(1080px,calc(100% - 40px)); margin:18px auto 92px; padding:16px 18px; border:1px solid #e3ad45; border-radius:14px; color:#654600; background:#fff8e7; }
+.fill-uncertain h2 { font-size:17px; }
+.fill-uncertain p { margin-top:4px; color:#765d28; }
+.uncertain-actions { display:flex; flex:none; gap:10px; }
+.fill-uncertain button:disabled { cursor:not-allowed; opacity:.55; }
+@media (max-width:700px) { .fill-uncertain,.uncertain-actions { align-items:stretch; flex-direction:column; } }

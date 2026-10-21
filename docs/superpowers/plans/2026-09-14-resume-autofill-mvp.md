@@ -6,7 +6,7 @@
 
 **Architecture:** WXT provides the extension build and entrypoint lifecycle. React is used only for the options page and side panel; the scan, match, fill, verification, storage, and adapter contracts remain framework-independent TypeScript. The P0 runtime uses a generic form engine, an empty adapter registry with a stable contract, and local profile/mapping storage; real recruitment-platform adapters are a later, separately testable increment.
 
-**Tech Stack:** WXT, React, TypeScript, Chrome Manifest V3, Vitest, Playwright, browser local storage, pnpm.
+**Tech Stack:** WXT, React, TypeScript, Chrome Manifest V3, Vitest, Playwright, browser local storage, npm.
 
 **Spec:** `docs/superpowers/specs/2026-09-14-resume-autofill-extension-design.md`
 
@@ -92,7 +92,7 @@ Responsibility boundaries:
 - Create: `vitest.config.ts`
 - Create: `playwright.config.ts`
 - Create: `package.json`
-- Create: `pnpm-lock.yaml`
+- Create: `package-lock.json`
 - Create: `entrypoints/background.ts`
 - Create: `entrypoints/form-runtime.ts`
 - Create: `entrypoints/options/index.html`
@@ -104,7 +104,7 @@ Responsibility boundaries:
 - Test: `tests/unit/bootstrap/config.test.ts`
 
 **Interfaces:**
-- Produces the build commands `pnpm dev`, `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm e2e` used by every later task.
+- Produces the build commands `npm run dev`, `npm run build`, `npm run typecheck`, `npm test`, and `npm run e2e` used by every later task.
 - Produces a Chrome MV3 manifest containing `activeTab`, `scripting`, `storage`, and `sidePanel` permissions; no `<all_urls>` permission is added in P0.
 
 - [ ] **Step 1: Create the implementation branch from the confirmed design history.**
@@ -123,12 +123,12 @@ Expected: the new branch is based on the existing design commits; only previousl
 Run:
 
 ```bash
-pnpm init
-pnpm add react react-dom
-pnpm add -D wxt @wxt-dev/module-react typescript @types/node @types/react @types/react-dom vitest jsdom @playwright/test @testing-library/react tsx
+npm init -y
+npm install react react-dom
+npm install --save-dev wxt @wxt-dev/module-react typescript @types/node @types/react @types/react-dom vitest jsdom @playwright/test @testing-library/react tsx
 ```
 
-Expected: `package.json` and `pnpm-lock.yaml` are created; no backend or AI package is installed.
+Expected: `package.json` and `package-lock.json` are created; no backend or AI package is installed.
 
 - [ ] **Step 3: Configure WXT and the React module.**
 
@@ -184,9 +184,9 @@ The two React entrypoints must mount a root element and render a plain text shel
 Run:
 
 ```bash
-pnpm typecheck
-pnpm build
-pnpm test -- tests/unit/bootstrap/config.test.ts
+npm run typecheck
+npm run build
+npm test -- tests/unit/bootstrap/config.test.ts
 ```
 
 Expected: type checking, WXT build, and the bootstrap test pass; `.output/` and `.wxt/` are not staged.
@@ -194,7 +194,7 @@ Expected: type checking, WXT build, and the bootstrap test pass; `.output/` and 
 - [ ] **Step 8: Commit the shell.**
 
 ```bash
-git add .gitignore README.md wxt.config.ts vitest.config.ts playwright.config.ts package.json pnpm-lock.yaml entrypoints tests/unit/bootstrap
+git add .gitignore README.md wxt.config.ts vitest.config.ts playwright.config.ts package.json package-lock.json entrypoints tests/unit/bootstrap
 git diff --cached --check
 git commit -m "chore(resume-autofill): bootstrap extension shell"
 ```
@@ -334,7 +334,7 @@ it('keeps profile values serializable and preserves custom keys', () => {
 - [ ] **Step 2: Run the focused tests and verify the new contracts are missing.**
 
 ```bash
-pnpm exec vitest run tests/unit/shared/profile.test.ts tests/unit/shared/form.test.ts tests/unit/shared/messages.test.ts
+npx vitest run tests/unit/shared/profile.test.ts tests/unit/shared/form.test.ts tests/unit/shared/messages.test.ts
 ```
 
 Expected: FAIL because the domain modules have not been created.
@@ -346,8 +346,8 @@ Keep the contracts free of browser APIs and React imports. Use literal unions fo
 - [ ] **Step 4: Run focused tests and type checking.**
 
 ```bash
-pnpm exec vitest run tests/unit/shared/profile.test.ts tests/unit/shared/form.test.ts tests/unit/shared/messages.test.ts
-pnpm typecheck
+npx vitest run tests/unit/shared/profile.test.ts tests/unit/shared/form.test.ts tests/unit/shared/messages.test.ts
+npm run typecheck
 ```
 
 Expected: PASS.
@@ -405,7 +405,7 @@ it('returns a schema-valid empty profile when nothing is stored', async () => {
 - [ ] **Step 2: Run the focused tests and verify they fail.**
 
 ```bash
-pnpm exec vitest run tests/unit/storage/profile-store.test.ts tests/unit/storage/mapping-store.test.ts
+npx vitest run tests/unit/storage/profile-store.test.ts tests/unit/storage/mapping-store.test.ts
 ```
 
 Expected: FAIL because the repositories do not exist.
@@ -421,8 +421,8 @@ Repository methods must preserve the original cause for developer diagnostics wh
 - [ ] **Step 5: Run tests and type checking.**
 
 ```bash
-pnpm exec vitest run tests/unit/storage/profile-store.test.ts tests/unit/storage/mapping-store.test.ts
-pnpm typecheck
+npx vitest run tests/unit/storage/profile-store.test.ts tests/unit/storage/mapping-store.test.ts
+npm run typecheck
 ```
 
 Expected: PASS.
@@ -500,7 +500,7 @@ it('scans visible controls and resolves their labels without scanning hidden fie
 - [ ] **Step 3: Run the scanner tests and verify failure.**
 
 ```bash
-pnpm exec vitest run tests/unit/form-engine/scanner.test.ts tests/unit/form-engine/label-resolver.test.ts
+npx vitest run tests/unit/form-engine/scanner.test.ts tests/unit/form-engine/label-resolver.test.ts
 ```
 
 Expected: FAIL because scanner functions are not implemented.
@@ -522,8 +522,8 @@ Scan `input` except `hidden`, `button`, `submit`, `reset`, `image`, `file`, `pas
 - [ ] **Step 7: Run tests, type checking, and commit.**
 
 ```bash
-pnpm exec vitest run tests/unit/form-engine/scanner.test.ts tests/unit/form-engine/label-resolver.test.ts
-pnpm typecheck
+npx vitest run tests/unit/form-engine/scanner.test.ts tests/unit/form-engine/label-resolver.test.ts
+npm run typecheck
 git add src/form-engine tests/unit/form-engine
 git diff --cached --check
 git commit -m "feat(resume-autofill): scan standard form controls"
@@ -606,7 +606,7 @@ Add tests for an ambiguous location label, a type-incompatible candidate, a `nev
 - [ ] **Step 3: Run focused tests and verify failure.**
 
 ```bash
-pnpm exec vitest run tests/unit/matching/generic-matcher.test.ts tests/unit/matching/confidence.test.ts
+npx vitest run tests/unit/matching/generic-matcher.test.ts tests/unit/matching/confidence.test.ts
 ```
 
 Expected: FAIL because the dictionary and matcher do not exist.
@@ -631,8 +631,8 @@ Two candidates within `0.05` of each other are a close tie and must not be auto-
 - [ ] **Step 6: Run tests, inspect reasons, and commit.**
 
 ```bash
-pnpm exec vitest run tests/unit/matching/generic-matcher.test.ts tests/unit/matching/confidence.test.ts
-pnpm typecheck
+npx vitest run tests/unit/matching/generic-matcher.test.ts tests/unit/matching/confidence.test.ts
+npm run typecheck
 git add src/matching tests/unit/matching
 git diff --cached --check
 git commit -m "feat(resume-autofill): match fields with confidence"
@@ -699,7 +699,7 @@ it('does not overwrite an existing value by default', async () => {
 - [ ] **Step 2: Run focused tests and verify failure.**
 
 ```bash
-pnpm exec vitest run tests/unit/filling/control-filler.test.ts tests/unit/filling/verify-field.test.ts
+npx vitest run tests/unit/filling/control-filler.test.ts tests/unit/filling/verify-field.test.ts
 ```
 
 Expected: FAIL because the filler is not implemented.
@@ -719,8 +719,8 @@ Re-read the control after the events have run. Compare booleans and normalized s
 - [ ] **Step 6: Run tests, type checking, and commit.**
 
 ```bash
-pnpm exec vitest run tests/unit/filling/control-filler.test.ts tests/unit/filling/verify-field.test.ts
-pnpm typecheck
+npx vitest run tests/unit/filling/control-filler.test.ts tests/unit/filling/verify-field.test.ts
+npm run typecheck
 git add src/filling tests/unit/filling
 git diff --cached --check
 git commit -m "feat(resume-autofill): fill and verify standard controls"
@@ -795,7 +795,7 @@ it('resolves the first matching adapter in registration order', () => {
 - [ ] **Step 2: Run focused tests and verify failure.**
 
 ```bash
-pnpm exec vitest run tests/unit/adapters/adapter-registry.test.ts tests/unit/matching/resolve-match.test.ts
+npx vitest run tests/unit/adapters/adapter-registry.test.ts tests/unit/matching/resolve-match.test.ts
 ```
 
 Expected: FAIL because the registry and resolution function are not implemented.
@@ -811,8 +811,8 @@ Expected: FAIL because the registry and resolution function are not implemented.
 - [ ] **Step 5: Run tests and commit.**
 
 ```bash
-pnpm exec vitest run tests/unit/adapters/adapter-registry.test.ts tests/unit/matching/resolve-match.test.ts
-pnpm typecheck
+npx vitest run tests/unit/adapters/adapter-registry.test.ts tests/unit/matching/resolve-match.test.ts
+npm run typecheck
 git add src/adapters src/matching/resolve-match.ts tests/unit/adapters tests/unit/matching/resolve-match.test.ts
 git diff --cached --check
 git commit -m "feat(resume-autofill): add adapter registry contract"
@@ -890,7 +890,7 @@ Test the scan path, successful multi-field fill, one-field failure with other fi
 - [ ] **Step 2: Run focused tests and verify failure.**
 
 ```bash
-pnpm exec vitest run tests/unit/runtime/application-controller.test.ts tests/unit/runtime/message-errors.test.ts
+npx vitest run tests/unit/runtime/application-controller.test.ts tests/unit/runtime/message-errors.test.ts
 ```
 
 Expected: FAIL because the controller and error types are not implemented.
@@ -930,9 +930,9 @@ Use the stable error codes defined by `RuntimeError`; set `retryable` only for p
 - [ ] **Step 6: Run tests, build, and commit.**
 
 ```bash
-pnpm exec vitest run tests/unit/runtime/application-controller.test.ts tests/unit/runtime/message-errors.test.ts
-pnpm typecheck
-pnpm build
+npx vitest run tests/unit/runtime/application-controller.test.ts tests/unit/runtime/message-errors.test.ts
+npm run typecheck
+npm run build
 git add src/runtime src/shared/messages.ts entrypoints/background.ts entrypoints/form-runtime.ts tests/unit/runtime
 git diff --cached --check
 git commit -m "feat(resume-autofill): connect extension runtime messages"
@@ -986,7 +986,7 @@ it('does not leave review state when no field is confirmed', () => {
 - [ ] **Step 2: Run UI tests and verify failure.**
 
 ```bash
-pnpm exec vitest run tests/unit/ui/panel-state.test.ts tests/unit/ui/field-match-view.test.tsx
+npx vitest run tests/unit/ui/panel-state.test.ts tests/unit/ui/field-match-view.test.tsx
 ```
 
 Expected: FAIL because the state and components are not implemented.
@@ -1010,9 +1010,9 @@ For an unresolved field, allow the user to select an existing profile key or cre
 - [ ] **Step 7: Run tests and manual UI checks.**
 
 ```bash
-pnpm exec vitest run tests/unit/ui/panel-state.test.ts tests/unit/ui/field-match-view.test.tsx
-pnpm typecheck
-pnpm build
+npx vitest run tests/unit/ui/panel-state.test.ts tests/unit/ui/field-match-view.test.tsx
+npm run typecheck
+npm run build
 ```
 
 Manual checks: opening the options page works; saving a dummy profile survives reload; opening the side panel does not change a test page; scan results are readable; no profile value appears in the browser console.
@@ -1056,7 +1056,7 @@ Use Node's built-in `http` and `fs` modules. Serve only the four fixed files fro
 
 The test setup must:
 
-1. Run `pnpm build:test` before the browser project.
+1. Run `npm run build:test` before the browser project.
 2. Start the fixture server on `127.0.0.1:4173`.
 3. Launch the installed Google Chrome channel and load the built extension output to verify the package is browser-loadable without downloading a separate Playwright browser.
 4. Build the test manifest with only `http://127.0.0.1/*` in `host_permissions`, while the normal build omits that host permission.
@@ -1081,7 +1081,7 @@ The helper `runRuntimeMessage` must load the actual built `form-runtime.js` once
 - [x] **Step 5: Run browser tests and inspect artifacts.**
 
 ```bash
-pnpm e2e
+npm run e2e
 ```
 
 Expected: all local fixture tests pass; Playwright report contains no production URL, real profile value, or submit action. Verified: `7 passed` in 5.4s; normal build manifest has no `host_permissions`, while the test build has only `http://127.0.0.1/*`.
@@ -1109,12 +1109,12 @@ git commit -m "test(resume-autofill): cover local form filling flow"
 `README.md` must explain:
 
 ```text
-pnpm install
-pnpm dev
-pnpm typecheck
-pnpm test
-pnpm e2e
-pnpm build
+npm ci
+npm run dev
+npm run typecheck
+npm test
+npm run e2e
+npm run build
 ```
 
 It must explain how to load the generated Chrome MV3 build as an unpacked extension and how to open the options page and side panel. It must state that the extension does not submit applications, bypass verification, or upload files automatically.
@@ -1123,10 +1123,10 @@ It must explain how to load the generated Chrome MV3 build as an unpacked extens
 
 The checklist must include:
 
-- `pnpm typecheck` passes;
-- `pnpm test` passes;
-- `pnpm e2e` passes against local fixtures;
-- `pnpm build` passes;
+- `npm run typecheck` passes;
+- `npm test` passes;
+- `npm run e2e` passes against local fixtures;
+- `npm run build` passes;
 - scan has no page mutation;
 - only explicitly confirmed fields are filled;
 - existing values are preserved;
@@ -1139,10 +1139,10 @@ The checklist must include:
 - [x] **Step 3: Run the full verification set.**
 
 ```bash
-pnpm typecheck
-pnpm test
-pnpm e2e
-pnpm build
+npm run typecheck
+npm test
+npm run e2e
+npm run build
 git diff --check
 ```
 
@@ -1153,7 +1153,7 @@ Run:
 ```bash
 git status --short --branch
 git log --oneline --decorate -12
-rg -n -i 'api[_-]?key|token|password|secret|fixme' --glob '!pnpm-lock.yaml' --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**' .
+rg -n -i 'api[_-]?key|token|password|secret|fixme' --glob '!package-lock.json' --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**' .
 ```
 
 Expected: no credential-like values and no unfinished implementation markers in source; generated artifacts and environment `.DS_Store` files remain untracked or ignored, never committed. Verified: the only sensitive-word matches are intentional control names used by scanner tests (`type="password"`, `name="secret"`); no credential values or unfinished markers were found.

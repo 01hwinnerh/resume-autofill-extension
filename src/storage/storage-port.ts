@@ -1,12 +1,16 @@
 export interface StoragePort {
   get<T>(key: string): Promise<T | undefined>;
   set<T>(key: string, value: T): Promise<void>;
+  remove?(key: string): Promise<void>;
   /** Atomic when implemented by the background-backed browser storage adapter. */
   compareAndSet?<T>(key: string, expectedRevision: number, value: T): Promise<boolean>;
+  transaction?(request: import('./coordinated-transaction').StorageTransactionRequest): Promise<import('./coordinated-transaction').StorageTransactionResult>;
+  recoveryState?(): Promise<import('./coordinated-transaction').StorageRecoveryState | undefined>;
+  resolveTransaction?(request: import('./coordinated-transaction').StorageTransactionResolutionRequest): Promise<import('./coordinated-transaction').StorageTransactionResult>;
   subscribe?<T>(key: string, listener: (value: T | undefined) => void): () => void;
 }
 
-export type StorageErrorCode = 'read_failed' | 'write_failed' | 'conflict' | 'unsupported_schema';
+export type StorageErrorCode = 'read_failed' | 'write_failed' | 'conflict' | 'unsupported_schema' | 'corrupt_data' | 'recovery_required';
 export type StorageOperation = 'read' | 'write';
 
 export class StorageError extends Error {

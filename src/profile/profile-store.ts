@@ -1,5 +1,7 @@
 import { PROFILE_SCHEMA_VERSION, type Profile, type ProfileField } from '../shared/profile';
-import { StorageError, UnsupportedSchemaVersionError, type StoragePort } from '../storage/storage-port';
+import { executeStorageTransaction, readStorageRecoveryState, recoverStorageTransaction, resolveStorageTransaction, type StorageRecoveryState, type StorageTransactionRequest, type StorageTransactionResolutionRequest, type StorageTransactionResult } from '../storage/coordinated-transaction';
+import { CorruptStorageDataError, futureSchema, inspectionFromError, type StorageInspection } from '../storage/storage-codec';
+import { StorageError, type StoragePort } from '../storage/storage-port';
 
 export const PROFILE_KEY = 'resume-autofill.profile.v1';
 const EMPTY_PROFILE: Profile = { schemaVersion: PROFILE_SCHEMA_VERSION, fields: {} };
@@ -39,11 +41,15 @@ function isFieldValue(value: unknown): boolean {
     || (Array.isArray(value) && value.every((item) => typeof item === 'string'));
 }
 
-function decode(value: unknown): { profile: Profile; revision: number } {
-  if (value && typeof value === 'object') {
-    const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
-    if (typeof schemaVersion === 'number' && schemaVersion > PROFILE_SCHEMA_VERSION) throw new UnsupportedSchemaVersionError(PROFILE_KEY, schemaVersion);
-  }
+export interface ProfileSnapshot { profile: Profile; revision: number }
+export function profileEnvelope(profile: Profile, revision: number): ProfileEnvelope {
+  if (!isProfile(profile)) throw new CorruptStorageDataError(PROFILE_KEY, profile, '待写入的个人资料格式无效');
+  return { schemaVersion: PROFILE_SCHEMA_VERSION, revision, profile: structuredClone(profile) };
+}
+
+function decode(value: unknown): ProfileSnapshot {
+  if (value === undefined) return { profile: { ...EMPTY_PROFILE, fields: {} }, revision: 0 };
+  futureSchema(PROFILE_KEY, value, PROFILE_SCHEMA_VERSION);
   if (isProfile(value)) return { profile: value, revision: 0 };
   if (value && typeof value === 'object') {
     const envelope = value as Partial<ProfileEnvelope>;
@@ -53,7 +59,7 @@ function decode(value: unknown): { profile: Profile; revision: number } {
       && envelope.revision >= 0
       && isProfile(envelope.profile)) return { profile: envelope.profile, revision: envelope.revision };
   }
-  return { profile: { ...EMPTY_PROFILE, fields: {} }, revision: 0 };
+  throw new CorruptStorageDataError(PROFILE_KEY, value, '个人资料存储格式无法识别或已损坏');
 }
 
 function sameField(a: ProfileField | undefined, b: ProfileField | undefined): boolean {
@@ -80,6 +86,34 @@ export class ProfileStore {
     const { profile } = await this.read();
     this.cachedProfile = structuredClone(profile);
     return structuredClone(profile);
+  }
+
+  async snapshot(): Promise<ProfileSnapshot> {
+    const current = await this.read();
+    return { profile: structuredClone(current.profile), revision: current.revision };
+  }
+
+  async inspect(): Promise<StorageInspection> {
+    const raw = await this.storage.get<unknown>(PROFILE_KEY);
+    if (raw === undefined) return { key: PROFILE_KEY, state: 'missing' };
+    try {
+      const decoded = decode(raw);
+      return { key: PROFILE_KEY, state: isProfile(raw) ? 'legacy' : 'current', raw: structuredClone(raw), schemaVersion: PROFILE_SCHEMA_VERSION, message: `revision ${decoded.revision}` };
+    } catch (error) { return inspectionFromError(PROFILE_KEY, raw, error); }
+  }
+
+  async recoveryState(): Promise<StorageRecoveryState | undefined> {
+    if (this.storage.recoveryState) return this.storage.recoveryState();
+    await recoverStorageTransaction(this.storage);
+    return readStorageRecoveryState(this.storage);
+  }
+
+  async resolveTransaction(request: StorageTransactionResolutionRequest): Promise<StorageTransactionResult> {
+    return this.storage.resolveTransaction ? this.storage.resolveTransaction(request) : resolveStorageTransaction(this.storage, request);
+  }
+
+  async transaction(request: StorageTransactionRequest): Promise<StorageTransactionResult> {
+    return this.storage.transaction ? this.storage.transaction(request) : executeStorageTransaction(this.storage, request);
   }
 
   async save(profile: Profile): Promise<void> {
@@ -112,7 +146,7 @@ export class ProfileStore {
     try {
       return decode(await this.storage.get<unknown>(PROFILE_KEY));
     } catch (cause) {
-      if (cause instanceof UnsupportedSchemaVersionError) throw cause;
+      if (cause instanceof StorageError) throw cause;
       throw new StorageError('read_failed', 'read', PROFILE_KEY, cause);
     }
   }
@@ -130,6 +164,7 @@ export class ProfileStore {
         await this.storage.set(PROFILE_KEY, envelope);
         return profile;
       } catch (cause) {
+        if (cause instanceof StorageError) throw cause;
         throw new StorageError('write_failed', 'write', PROFILE_KEY, cause);
       }
     }

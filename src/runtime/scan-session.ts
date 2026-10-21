@@ -1,5 +1,9 @@
 export interface FrameScanTarget {
+  /** Transient routing ID for the live scan session only. */
   frameId: number;
+  frameUrl?: string;
+  frameOrigin?: string;
+  frameIdentity?: string;
   fingerprint: string;
   fieldIds: string[];
 }

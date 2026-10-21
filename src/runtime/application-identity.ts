@@ -30,10 +30,26 @@ function hostCompany(url: string): string {
   return domainParts.find((part) => !GENERIC_PLATFORM_NAMES.has(part.toLowerCase())) ?? '';
 }
 
+const GENERIC_ROLE_NAMES = new Set([
+  '职位详情', '职位申请', '加入我们', '招聘', '个人中心', '用户中心', '投递中心', '投递记录',
+  '我的申请', '我的投递', '申请记录', '职位列表', '岗位列表', 'applications', 'application',
+  'job details', 'jobs', 'careers', 'apply',
+]);
+
+export function isSpecificApplicationRole(value?: string): boolean {
+  const candidate = clean(value);
+  if (!candidate || candidate.length < 2 || GENERIC_ROLE_NAMES.has(candidate.toLowerCase())) return false;
+  return !/^(?:个人中心|投递记录|我的申请|我的投递|职位详情|职位列表|岗位列表)(?:[\s｜|\-—].*)?$/i.test(candidate);
+}
+
+export function isSpecificApplicationCompany(value?: string): boolean {
+  const candidate = companyCandidate(value);
+  return Boolean(candidate) && !/^(?:招聘网站|招聘平台|公司|企业)$/.test(candidate);
+}
+
 function roleCandidate(value?: string): string {
   const candidate = clean(value);
-  const generic = new Set(['职位详情', '职位申请', '加入我们', '招聘', 'job details', 'apply']);
-  return generic.has(candidate.toLowerCase()) ? '' : candidate;
+  return isSpecificApplicationRole(candidate) ? candidate : '';
 }
 
 function cleanTitle(value: string): string {
@@ -46,7 +62,7 @@ function cleanTitle(value: string): string {
 export function inferApplicationIdentity(page: ScanPageInfo): ApplicationIdentity {
   const metadata = page.metadata;
   const company = companyCandidate(metadata?.companyName) || companyCandidate(metadata?.siteName) || hostCompany(page.url);
-  const role = roleCandidate(metadata?.jobTitle) || roleCandidate(metadata?.heading) || cleanTitle(page.title);
+  const role = roleCandidate(metadata?.jobTitle) || roleCandidate(metadata?.heading) || roleCandidate(cleanTitle(page.title));
   return { company, role };
 }
 

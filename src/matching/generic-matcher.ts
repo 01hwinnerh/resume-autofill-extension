@@ -1,3 +1,4 @@
+import { frameIdentityParts, legacyFrameIdentityParts } from '../runtime/frame-identity';
 import type { FieldMatch, MatchCandidate, PageFieldDescriptor } from '../shared/form';
 import { inferMappingSectionIndex, normalizeMappingScope, type UserFieldMapping } from '../shared/mapping';
 import type { Profile, ProfileField, ProfileFieldType } from '../shared/profile';
@@ -110,10 +111,28 @@ function mappingMatchesSection(mapping: UserFieldMapping, descriptor: PageFieldD
   return (mapping.sectionIndex ?? inferMappingSectionIndex(mapping.profileKey)) === descriptor.sectionIndex;
 }
 
+function frameIdentitiesMatch(mappingIdentity: string, descriptorIdentity?: string): boolean {
+  if (!descriptorIdentity) return false;
+  if (mappingIdentity === descriptorIdentity) return true;
+  const legacy = legacyFrameIdentityParts(mappingIdentity);
+  if (!legacy) return false;
+  const current = frameIdentityParts(descriptorIdentity);
+  return legacy.location === current.location && (current.name === undefined || legacy.name === current.name);
+}
+
+function mappingMatchesFrame(mapping: UserFieldMapping, descriptor: PageFieldDescriptor): boolean {
+  const scope = normalizeMappingScope(mapping.scope);
+  return scope.kind === 'global' || mapping.frameIdentity === undefined || frameIdentitiesMatch(mapping.frameIdentity, descriptor.frameIdentity);
+}
+
 function matchField(descriptor: PageFieldDescriptor, profile: Profile, mappings: UserFieldMapping[], pageContext: MatchOptions['pageContext'], profileSectionIndex?: number): FieldMatch {
   const mapping = mappings
-    .filter((item) => item.fingerprint === descriptor.fingerprint && mappingMatchesSection(item, descriptor) && mappingPriority(item, pageContext) > 0)
-    .sort((left, right) => mappingPriority(right, pageContext) - mappingPriority(left, pageContext))[0];
+    .filter((item) => item.fingerprint === descriptor.fingerprint && mappingMatchesSection(item, descriptor) && mappingMatchesFrame(item, descriptor) && mappingPriority(item, pageContext) > 0)
+    .sort((left, right) => {
+      const framePriority = Number(Boolean(right.frameIdentity && frameIdentitiesMatch(right.frameIdentity, descriptor.frameIdentity)))
+        - Number(Boolean(left.frameIdentity && frameIdentitiesMatch(left.frameIdentity, descriptor.frameIdentity)));
+      return framePriority || mappingPriority(right, pageContext) - mappingPriority(left, pageContext);
+    })[0];
   const mappedField = mapping ? profile.fields[mapping.profileKey] : undefined;
   const configuredCandidates = mappedField ? [createUserCandidate(mappedField.key)] : genericCandidates(descriptor, profile, profileSectionIndex);
   const candidates = configuredCandidates.length ? configuredCandidates : recognitionCandidates(descriptor, profileSectionIndex);

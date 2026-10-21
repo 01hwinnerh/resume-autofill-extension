@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>真实扩展集成职位</title></head>
+<body>
+  <h1>平台工程师</h1><p data-company="集成测试公司">集成测试公司</p>
+  <label>已有姓名<input id="existing-name" name="name" value="请保留我"></label>
+  <div id="shadow-host"></div>
+  <iframe name="work-details" title="跨域工作经历" src="http://127.0.0.1:4174/iframe-ats-form.html"></iframe>
+  <script>
+    const root = document.querySelector('#shadow-host').attachShadow({ mode: 'open' });
+    root.innerHTML = '<label for="shadow-email">邮箱</label><input id="shadow-email" name="email">';
+  </script>
+</body>
+</html>

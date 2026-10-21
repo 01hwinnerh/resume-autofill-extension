@@ -19,6 +19,9 @@ const allowedFixtures = new Set([
   'workday-ats.html',
   'iframe-ats-form.html',
   'third-round-ats.html',
+  'extension-integration.html',
+  'application-detail.html',
+  'meituan-applications.html',
 ]);
 const requestedPort = process.argv.slice(2).indexOf('--port');
 const port = requestedPort >= 0 ? Number(process.argv.slice(2)[requestedPort + 1]) : 4173;

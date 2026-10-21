@@ -9,4 +9,7 @@ export interface ScanContext {
   host: string;
   title: string;
   framePath: number[];
+  frameUrl?: string;
+  frameOrigin?: string;
+  frameIdentity?: string;
 }

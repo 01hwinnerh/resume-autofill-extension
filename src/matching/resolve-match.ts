@@ -29,6 +29,10 @@ function resolveField(field: PageFieldDescriptor, profile: Profile, mappedMatch:
 
 export function resolveMatches(fields: PageFieldDescriptor[], profile: Profile, options: ResolveMatchOptions): FieldMatch[] {
   const mappedMatches = matchFields(fields, profile, options);
-  const genericMatches = matchFields(fields, profile, { mappings: [], pageContext: options.pageContext });
+  // With no learned mappings the first pass is already the generic result. Reuse it instead of
+  // scoring every descriptor against the full dictionary twice (the common scan/evaluation path).
+  const genericMatches = options.mappings.length
+    ? matchFields(fields, profile, { mappings: [], pageContext: options.pageContext })
+    : mappedMatches;
   return fields.map((field, index) => resolveField(field, profile, mappedMatches[index], genericMatches[index], options));
 }

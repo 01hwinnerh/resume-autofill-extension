@@ -1,9 +1,10 @@
 import type { ApplicationRecord } from '../shared/application-record';
 import type { Profile } from '../shared/profile';
 import type { UserFieldMapping } from '../shared/mapping';
-import { isProfile, type ProfileStore } from '../profile/profile-store';
-import { isUserFieldMapping, type MappingStore } from '../storage/mapping-store';
-import { isApplicationRecord, type ApplicationStore } from '../storage/application-store';
+import { isProfile, profileEnvelope, PROFILE_KEY, type ProfileStore } from '../profile/profile-store';
+import { isUserFieldMapping, mappingEnvelope, MAPPINGS_KEY, type MappingStore } from '../storage/mapping-store';
+import { applicationEnvelope, APPLICATIONS_KEY, isApplicationRecord, type ApplicationStore } from '../storage/application-store';
+import { createTransactionId, StorageTransactionError, type StorageTransactionTarget } from '../storage/coordinated-transaction';
 
 export const PORTABLE_CONFIG_FORMAT = 'resume-autofill-config' as const;
 export const PORTABLE_CONFIG_SCHEMA_VERSION = 2 as const;
@@ -44,14 +45,15 @@ export class PortableConfigError extends Error {
 }
 
 export class PortableConfigImportError extends Error {
-  readonly rollbackFailures: string[];
-  constructor(cause: unknown, rollbackFailures: string[]) {
-    const reason = cause instanceof Error ? cause.message : '未知错误';
-    super(rollbackFailures.length
-      ? `导入失败：${reason}；回滚未完全成功：${rollbackFailures.join('、')}`
-      : `导入失败：${reason}；已恢复导入前的资料、映射和投递记录。`);
+  readonly transactionId: string;
+  readonly recovery: 'recovered' | 'manual-required';
+  constructor(error: StorageTransactionError) {
+    super(error.outcome === 'failed-recovered'
+      ? `导入失败，但已恢复导入前数据（事务 ${error.transactionId}）：${error.message}`
+      : `导入失败，需要人工恢复（事务 ${error.transactionId}）：${error.message}`);
     this.name = 'PortableConfigImportError';
-    this.rollbackFailures = rollbackFailures;
+    this.transactionId = error.transactionId;
+    this.recovery = error.outcome === 'failed-recovered' ? 'recovered' : 'manual-required';
   }
 }
 
@@ -117,19 +119,25 @@ export function summarizePortableConfig(config: PortableConfig): PortableConfigS
 }
 
 export async function importPortableConfig(config: PortableConfig, profileStore: ProfileStore, mappingStore: MappingStore, applicationStore: ApplicationStore): Promise<void> {
-  const [previousProfile, previousMappings, previousApplications] = await Promise.all([profileStore.load(), mappingStore.list(), applicationStore.list()]);
-  try {
-    await profileStore.save(config.profile);
-    await mappingStore.replace(config.mappings);
-    if (config.schemaVersion === 2) await applicationStore.replaceAll(config.applications);
-  } catch (cause) {
-    const rollback = await Promise.allSettled([
-      profileStore.save(previousProfile),
-      mappingStore.replace(previousMappings),
-      applicationStore.replaceAll(previousApplications),
-    ]);
-    const labels = ['个人资料', '字段映射', '投递记录'];
-    const failures = rollback.flatMap((result, index) => result.status === 'rejected' ? [labels[index]!] : []);
-    throw new PortableConfigImportError(cause, failures);
-  }
+  const [profile, mappings, applications] = await Promise.all([
+    profileStore.snapshot(),
+    mappingStore.snapshot(),
+    config.schemaVersion === 2 ? applicationStore.snapshot() : Promise.resolve(undefined),
+  ]);
+  const targets: StorageTransactionTarget[] = [
+    { key: PROFILE_KEY, expectedRevision: profile.revision, value: profileEnvelope(config.profile, profile.revision + 1) },
+    { key: MAPPINGS_KEY, expectedRevision: mappings.revision, value: mappingEnvelope(config.mappings, mappings.revision + 1) },
+  ];
+  if (config.schemaVersion === 2 && applications) targets.push({
+    key: APPLICATIONS_KEY,
+    expectedRevision: applications.revision,
+    value: applicationEnvelope(config.applications, applications.revision + 1),
+  });
+  const result = await profileStore.transaction({
+    transactionId: createTransactionId(),
+    kind: config.schemaVersion === 1 ? 'portable-import-v1' : 'portable-import-v2',
+    targets,
+  });
+  if (!result.ok) throw new PortableConfigImportError(new StorageTransactionError(result));
+  await profileStore.load();
 }

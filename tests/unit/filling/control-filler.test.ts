@@ -32,6 +32,78 @@ function observeEvents(element: HTMLElement, eventTypes: Array<'input' | 'change
 }
 
 describe('fillField', () => {
+  it('selects only from the explicitly owned popup when another popup has the same label', async () => {
+    const field = fieldFor('<input role="combobox" aria-controls="owned"><div id="owned" role="listbox"><button role="option">本科</button></div><div role="listbox"><button role="option">本科</button></div>', 'combobox');
+    const control = field.elements[0] as HTMLInputElement;
+    const clicks: string[] = [];
+    const options = document.querySelectorAll('button');
+    options[0]!.addEventListener('click', () => { clicks.push('owned'); control.setAttribute('aria-valuetext', '本科'); });
+    options[1]!.addEventListener('click', () => clicks.push('other'));
+    await expect(fillField(field, '本科', { confirmed: true, overwrite: false })).resolves.toMatchObject({ status: 'filled' });
+    expect(clicks).toEqual(['owned']);
+  });
+
+  it('selects an explicitly associated popup inside an open shadow root', async () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const root = document.querySelector<HTMLElement>('#host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<input role="combobox" aria-controls="degree-options"><div id="degree-options" role="listbox"><button role="option">本科</button></div>';
+    const control = root.querySelector<HTMLInputElement>('input')!;
+    const option = root.querySelector<HTMLButtonElement>('button')!;
+    const click = vi.fn(() => control.setAttribute('aria-valuetext', '本科'));
+    option.addEventListener('click', click);
+
+    await expect(selectComboboxOption(control, '本科')).resolves.toEqual({ selected: true });
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['hidden', '<div hidden><div id="options" role="listbox"><button role="option">本科</button></div></div>'],
+    ['disabled', '<div aria-disabled="true"><div id="options" role="listbox"><button role="option">本科</button></div></div>'],
+  ])('does not click options under a %s ancestor in an open shadow root', async (_state, popup) => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const root = document.querySelector<HTMLElement>('#host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = `<input role="combobox" aria-controls="options">${popup}`;
+    const click = vi.fn();
+    root.querySelector('button')!.addEventListener('click', click);
+
+    await expect(selectComboboxOption(root.querySelector('input')!, '本科', { timeoutMs: 20 }))
+      .resolves.toMatchObject({ selected: false });
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('does not click a pre-existing unowned popup inside an open shadow root', async () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const root = document.querySelector<HTMLElement>('#host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<input role="combobox"><div role="listbox"><button role="option">本科</button></div>';
+    const click = vi.fn();
+    root.querySelector('button')!.addEventListener('click', click);
+
+    await expect(selectComboboxOption(root.querySelector('input')!, '本科', { timeoutMs: 20 }))
+      .resolves.toMatchObject({ selected: false });
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('does not click an unrelated pre-existing popup without ownership', async () => {
+    document.body.innerHTML = '<input role="combobox"><div role="listbox"><button role="option">本科</button></div>';
+    let clicks = 0;
+    document.querySelector('button')!.addEventListener('click', () => { clicks += 1; });
+    const result = await selectComboboxOption(document.querySelector('input')!, '本科', { timeoutMs: 20 });
+    expect(clicks).toBe(0);
+    expect(result.selected).toBe(false);
+  });
+
+  it.each([150, 500])('does not finalize success before a %ims validation rollback', async (delay) => {
+    vi.useFakeTimers();
+    try {
+      const field = fieldFor('<input>', 'text');
+      const control = field.elements[0] as HTMLInputElement;
+      control.addEventListener('blur', () => setTimeout(() => { control.value = 'rejected'; control.setAttribute('aria-invalid', 'true'); }, delay));
+      const filling = fillField(field, 'Lin', { confirmed: true, overwrite: false });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect((await filling).status).toBe('failed');
+    } finally { vi.useRealTimers(); }
+  });
+
   it('refuses controls that require a site-specific manual interaction', async () => {
     const field = fieldFor('<input type="search" role="combobox">', 'text');
     field.manualOnly = true;

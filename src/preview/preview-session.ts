@@ -71,8 +71,117 @@ function sessionId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+export const PREVIEW_SESSION_TTL_MS = 30 * 60 * 1000;
+export const PREVIEW_SESSION_MAX = 12;
+export const PREVIEW_SESSION_INDEX_KEY = 'resume-autofill.preview-index.v1';
+const PREVIEW_STORAGE_PREFIX = 'resume-autofill.preview.';
+
+interface PreviewSessionIndexEntry {
+  id: string;
+  createdAt: string;
+}
+
+export interface PreviewSessionStorage {
+  get(keys?: string | string[] | null): Promise<Record<string, unknown>>;
+  set(items: Record<string, unknown>): Promise<void>;
+  remove(keys: string | string[]): Promise<void>;
+}
+
+let previewWriteQueue: Promise<void> = Promise.resolve();
+
+function withPreviewWriteLock<T>(write: () => Promise<T>): Promise<T> {
+  const result = previewWriteQueue.then(write, write);
+  previewWriteQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 export function previewStorageKey(id: string): string {
-  return `resume-autofill.preview.${id}`;
+  return `${PREVIEW_STORAGE_PREFIX}${id}`;
+}
+
+export function isPreviewSessionExpired(session: PreviewSession, now = Date.now()): boolean {
+  const createdAt = Date.parse(session.createdAt);
+  return !Number.isFinite(createdAt) || now - createdAt > PREVIEW_SESSION_TTL_MS;
+}
+
+function isPreviewSession(value: unknown): value is PreviewSession {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<PreviewSession>;
+  return typeof candidate.id === 'string' && (candidate.kind === 'fill' || candidate.kind === 'profile') && typeof candidate.createdAt === 'string';
+}
+
+function readIndex(value: unknown): PreviewSessionIndexEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is PreviewSessionIndexEntry => {
+    if (!entry || typeof entry !== 'object') return false;
+    const candidate = entry as Partial<PreviewSessionIndexEntry>;
+    return typeof candidate.id === 'string' && typeof candidate.createdAt === 'string';
+  });
+}
+
+function activeIndex(entries: PreviewSessionIndexEntry[], now: number): PreviewSessionIndexEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const createdAt = Date.parse(entry.createdAt);
+    if (!Number.isFinite(createdAt) || now - createdAt > PREVIEW_SESSION_TTL_MS || seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  }).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+}
+
+export async function storePreviewSession(storage: PreviewSessionStorage, session: PreviewSession, now = Date.now()): Promise<void> {
+  await withPreviewWriteLock(async () => {
+    const stored = await storage.get(PREVIEW_SESSION_INDEX_KEY);
+    const indexed = readIndex(stored[PREVIEW_SESSION_INDEX_KEY]);
+    const keep = activeIndex([{ id: session.id, createdAt: session.createdAt }, ...indexed], now).slice(0, PREVIEW_SESSION_MAX);
+    const keepIds = new Set(keep.map((entry) => entry.id));
+    const removeIds = new Set(indexed.filter((entry) => !keepIds.has(entry.id)).map((entry) => entry.id));
+    if (!keepIds.has(session.id)) {
+      removeIds.add(session.id);
+      await storage.set({ [PREVIEW_SESSION_INDEX_KEY]: keep });
+      await storage.remove([...removeIds].map(previewStorageKey));
+      return;
+    }
+    await storage.set({
+      [previewStorageKey(session.id)]: session,
+      [PREVIEW_SESSION_INDEX_KEY]: keep,
+    });
+    if (removeIds.size) await storage.remove([...removeIds].map(previewStorageKey));
+  });
+}
+
+export async function loadPreviewSession(storage: PreviewSessionStorage, id: string, now = Date.now()): Promise<PreviewSession | undefined> {
+  return withPreviewWriteLock(async () => {
+    const key = previewStorageKey(id);
+    const stored = await storage.get([key, PREVIEW_SESSION_INDEX_KEY]);
+    const value = stored[key];
+    const indexed = readIndex(stored[PREVIEW_SESSION_INDEX_KEY]);
+    if (!isPreviewSession(value) || isPreviewSessionExpired(value, now)) {
+      const keep = activeIndex(indexed, now).filter((entry) => entry.id !== id);
+      await storage.set({ [PREVIEW_SESSION_INDEX_KEY]: keep });
+      if (value !== undefined) await storage.remove(key);
+      return undefined;
+    }
+
+    // Legacy sessions were written without an index. Backfill the current ID without scanning storage.
+    const keep = activeIndex([{ id, createdAt: value.createdAt }, ...indexed], now).slice(0, PREVIEW_SESSION_MAX);
+    const keepIds = new Set(keep.map((entry) => entry.id));
+    const removeIds = new Set(indexed.filter((entry) => !keepIds.has(entry.id)).map((entry) => entry.id));
+    if (!keepIds.has(id)) removeIds.add(id);
+    await storage.set({ [PREVIEW_SESSION_INDEX_KEY]: keep });
+    if (removeIds.size) await storage.remove([...removeIds].map(previewStorageKey));
+    return value;
+  });
+}
+
+export async function removePreviewSession(storage: PreviewSessionStorage, id: string, now = Date.now()): Promise<void> {
+  await withPreviewWriteLock(async () => {
+    const stored = await storage.get(PREVIEW_SESSION_INDEX_KEY);
+    const indexed = readIndex(stored[PREVIEW_SESSION_INDEX_KEY]);
+    const keep = activeIndex(indexed, now).filter((entry) => entry.id !== id);
+    await storage.set({ [PREVIEW_SESSION_INDEX_KEY]: keep });
+    await storage.remove(previewStorageKey(id));
+  });
 }
 
 function groupName(match: FieldMatch): string {

@@ -22,3 +22,9 @@ describe('application identity', () => {
     })).toEqual({ company: '示例公司', role: '产品经理' });
   });
 });
+
+  it('rejects personal-center and application-list titles as roles', () => {
+    for (const title of ['个人中心', '投递记录', '我的申请', '我的投递 | 美团招聘']) {
+      expect(inferApplicationIdentity({ url: 'https://zhaopin.meituan.com/applications', host: 'zhaopin.meituan.com', title }).role).toBe('');
+    }
+  });

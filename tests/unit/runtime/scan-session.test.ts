@@ -10,6 +10,12 @@ describe('scan session target', () => {
     expect(() => assertScanTarget(target, { id: 17, url: target.url })).not.toThrow();
   });
 
+  it('does not invalidate the session when only an SPA document title changes', () => {
+    const samePageWithNewTitle = { id: 17, url: target.url, title: 'Frontend Engineer · Review' };
+    expect(isScanTargetCurrent(target, samePageWithNewTitle)).toBe(true);
+    expect(() => assertScanTarget(target, samePageWithNewTitle)).not.toThrow();
+  });
+
   it('rejects a different active tab instead of filling stale scan results', () => {
     expect(isScanTargetCurrent(target, { id: 18, url: 'http://127.0.0.1:4173/' })).toBe(false);
     expect(() => assertScanTarget(target, { id: 18, url: 'http://127.0.0.1:4173/' })).toThrow(/页面已切换/);

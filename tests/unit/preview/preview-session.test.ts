@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildFillPreviewSession, buildProfilePreviewSession, previewStorageKey, updateFillPreviewSessionValue } from '../../../src/preview/preview-session';
+import {
+  buildFillPreviewSession,
+  buildProfilePreviewSession,
+  loadPreviewSession,
+  PREVIEW_SESSION_INDEX_KEY,
+  PREVIEW_SESSION_MAX,
+  PREVIEW_SESSION_TTL_MS,
+  previewStorageKey,
+  storePreviewSession,
+  updateFillPreviewSessionValue,
+} from '../../../src/preview/preview-session';
 import type { Profile } from '../../../src/shared/profile';
 import type { ScanResult } from '../../../src/shared/form';
 
@@ -48,5 +58,67 @@ describe('preview sessions', () => {
   it('keeps an explicit empty state when no fields are selected', () => {
     const session = buildFillPreviewSession(scan, profile, []);
     expect(session.items).toEqual([]);
+  });
+});
+
+
+describe('preview session retention', () => {
+  function memoryStorage(initial: Record<string, unknown> = {}) {
+    const values = { ...initial };
+    const requested: Array<string | string[] | null | undefined> = [];
+    return {
+      values,
+      requested,
+      storage: {
+        get: async (keys?: string | string[] | null) => {
+          requested.push(keys);
+          if (keys == null) return { ...values };
+          return Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map((key) => [key, values[key]]));
+        },
+        set: async (items: Record<string, unknown>) => { Object.assign(values, items); },
+        remove: async (keys: string | string[]) => { for (const key of Array.isArray(keys) ? keys : [keys]) delete values[key]; },
+      },
+    };
+  }
+
+  it('rejects expired previews using the dedicated index without reading all storage', async () => {
+    const expired = { ...buildProfilePreviewSession(profile), id: 'expired', createdAt: new Date(0).toISOString() };
+    const state = memoryStorage({
+      unrelated: 'private',
+      [previewStorageKey(expired.id)]: expired,
+      [PREVIEW_SESSION_INDEX_KEY]: [{ id: expired.id, createdAt: expired.createdAt }],
+    });
+    await expect(loadPreviewSession(state.storage, expired.id, PREVIEW_SESSION_TTL_MS + 1)).resolves.toBeUndefined();
+    expect(state.values).not.toHaveProperty(previewStorageKey(expired.id));
+    expect(state.requested).not.toContain(null);
+    expect(state.requested).not.toContain(undefined);
+    expect(state.values.unrelated).toBe('private');
+  });
+
+  it('loads and indexes a legacy session that has no index entry', async () => {
+    const legacy = { ...buildProfilePreviewSession(profile), id: 'legacy', createdAt: new Date(10_000).toISOString() };
+    const state = memoryStorage({ [previewStorageKey(legacy.id)]: legacy });
+    await expect(loadPreviewSession(state.storage, legacy.id, 20_000)).resolves.toEqual(legacy);
+    expect(state.values[PREVIEW_SESSION_INDEX_KEY]).toEqual([{ id: legacy.id, createdAt: legacy.createdAt }]);
+    expect(state.requested).not.toContain(null);
+    expect(state.requested).not.toContain(undefined);
+  });
+
+  it('serializes concurrent stores and caps indexed preview sessions', async () => {
+    const state = memoryStorage({ unrelated: 'private' });
+    const sessions = Array.from({ length: PREVIEW_SESSION_MAX + 2 }, (_, index) => ({
+      ...buildProfilePreviewSession(profile),
+      id: `session-${index}`,
+      createdAt: new Date(10_000 + index).toISOString(),
+    }));
+    await Promise.all(sessions.map((session) => storePreviewSession(state.storage, session, 20_000)));
+
+    const index = state.values[PREVIEW_SESSION_INDEX_KEY] as Array<{ id: string }>;
+    expect(index).toHaveLength(PREVIEW_SESSION_MAX);
+    expect(index.map((entry) => entry.id)).toEqual(sessions.slice(-PREVIEW_SESSION_MAX).reverse().map((session) => session.id));
+    expect(Object.keys(state.values).filter((key) => key.startsWith('resume-autofill.preview.'))).toHaveLength(PREVIEW_SESSION_MAX);
+    expect(state.values.unrelated).toBe('private');
+    expect(state.requested).not.toContain(null);
+    expect(state.requested).not.toContain(undefined);
   });
 });

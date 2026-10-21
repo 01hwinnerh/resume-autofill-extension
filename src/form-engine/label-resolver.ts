@@ -1,5 +1,15 @@
 import { normalizeLabel } from './normalize-label';
 
+export interface LabelResolutionContext {
+  labelsByRoot: WeakMap<Document | ShadowRoot, Map<string, HTMLLabelElement>>;
+  labels: WeakMap<HTMLElement, string>;
+  sections: WeakMap<HTMLElement, string | null>;
+}
+
+export function createLabelResolutionContext(): LabelResolutionContext {
+  return { labelsByRoot: new WeakMap(), labels: new WeakMap(), sections: new WeakMap() };
+}
+
 const COMPONENT_LABEL_SELECTORS = [
   '.semi-form-field-label-text',
   '.semi-form-field-label',
@@ -38,19 +48,28 @@ function labelText(label: HTMLLabelElement | null | undefined): string | undefin
   return cleanLabel(clone.textContent);
 }
 
-function labelFor(element: HTMLElement): string | undefined {
-  if ('labels' in element) {
+function labelFor(element: HTMLElement, context?: LabelResolutionContext): string | undefined {
+  const id = element.id;
+  if (!context && 'labels' in element) {
     const labels = (element as HTMLInputElement).labels;
     const native = labelText(labels?.[0]);
     if (native) return native;
   }
-  const id = element.id;
-  if (!id) return undefined;
+  if (!id) {
+    if ('labels' in element) return labelText((element as HTMLInputElement).labels?.[0]);
+    return undefined;
+  }
   const root = element.getRootNode();
-  const labels = root instanceof Document || root instanceof ShadowRoot
-    ? root.querySelectorAll('label')
-    : element.ownerDocument.querySelectorAll('label');
-  const label = Array.from(labels).find((candidate) => candidate.htmlFor === id);
+  const queryRoot = root instanceof Document || root instanceof ShadowRoot ? root : element.ownerDocument;
+  if (context) {
+    let labelsById = context.labelsByRoot.get(queryRoot);
+    if (!labelsById) {
+      labelsById = new Map(Array.from(queryRoot.querySelectorAll<HTMLLabelElement>('label[for]')).map((label) => [label.htmlFor, label]));
+      context.labelsByRoot.set(queryRoot, labelsById);
+    }
+    return labelText(labelsById.get(id));
+  }
+  const label = Array.from(queryRoot.querySelectorAll('label')).find((candidate) => candidate.htmlFor === id);
   return labelText(label);
 }
 
@@ -120,7 +139,7 @@ function componentSectionHeading(container: HTMLElement): string | undefined {
   return undefined;
 }
 
-function formilyLabel(element: HTMLElement): string | undefined {
+function formilyLabel(element: HTMLElement, context?: LabelResolutionContext): string | undefined {
   const container = element.closest<HTMLElement>('[data-form-field-i18n-name]');
   if (!container) return undefined;
   const label = cleanLabel(container.getAttribute('data-form-field-i18n-name'));
@@ -128,19 +147,27 @@ function formilyLabel(element: HTMLElement): string | undefined {
   if (container.getAttribute('data-form-field-name') !== 'start_end_time') return label;
   const controls = Array.from(container.querySelectorAll<HTMLElement>('input, textarea, select'));
   const index = controls.indexOf(element);
-  const section = normalizeLabel(resolveSectionLabel(element));
+  const section = normalizeLabel(resolveSectionLabel(element, context));
   const isEducationRange = /(教育|学历|学校|education|academic)/.test(section);
   if (index === 0) return isEducationRange ? '入学时间' : '开始时间';
   if (index === 1) return isEducationRange ? '毕业时间' : '结束时间';
   return label;
 }
 
-export function resolveLabel(element: HTMLElement): string {
+export function resolveLabel(element: HTMLElement, context?: LabelResolutionContext): string {
+  const cached = context?.labels.get(element);
+  if (cached !== undefined) return cached;
+  const value = resolveLabelUncached(element, context);
+  context?.labels.set(element, value);
+  return value;
+}
+
+function resolveLabelUncached(element: HTMLElement, context?: LabelResolutionContext): string {
   const schema = cleanLabel(element.getAttribute('data-resume-autofill-schema-label'));
   if (schema) return schema;
-  const formily = formilyLabel(element);
+  const formily = formilyLabel(element, context);
   if (formily) return formily;
-  const associated = labelFor(element);
+  const associated = labelFor(element, context);
   if (associated) return associated;
   const wrapping = labelText(element.closest('label'));
   if (wrapping) return wrapping;
@@ -168,7 +195,15 @@ const FORMILY_SECTION_LABELS: Record<string, string> = {
   project_list: '项目经历',
 };
 
-export function resolveSectionLabel(element: HTMLElement): string | undefined {
+export function resolveSectionLabel(element: HTMLElement, context?: LabelResolutionContext): string | undefined {
+  const cached = context?.sections.get(element);
+  if (cached !== undefined) return cached ?? undefined;
+  const value = resolveSectionLabelUncached(element);
+  context?.sections.set(element, value ?? null);
+  return value;
+}
+
+function resolveSectionLabelUncached(element: HTMLElement): string | undefined {
   const schema = cleanLabel(element.getAttribute('data-resume-autofill-schema-section'));
   if (schema) return schema;
   for (let ancestor = composedParentElement(element); ancestor; ancestor = composedParentElement(ancestor)) {

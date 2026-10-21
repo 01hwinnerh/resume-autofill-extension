@@ -5,8 +5,11 @@ import { highlightField } from '../src/form-engine/focus-field';
 import { openScanRoots, scanDocument, toDescriptor } from '../src/form-engine/scanner';
 import type { RuntimePageField } from '../src/form-engine/runtime-types';
 import { closeActivePreviewOverlay, createPreviewOverlay, mutationTouchesPreviewOverlay } from '../src/runtime/preview-overlay';
+import { extractApplicationCandidates } from '../src/runtime/application-candidate-extractor';
 import { extractApplicationMetadata } from '../src/runtime/application-identity';
-import { createRuntimeError } from '../src/runtime/runtime-errors';
+import { FillOperations } from '../src/runtime/fill-operation';
+import { createFrameIdentity } from '../src/runtime/frame-identity';
+import { RuntimeRequestError, createRuntimeError } from '../src/runtime/runtime-errors';
 import type { ConfirmedFill, ContentPageMessage, PageMessage, PageResponse } from '../src/shared/messages';
 import { browser } from 'wxt/browser';
 
@@ -15,11 +18,20 @@ const installedKey = '__resumeAutofillFormRuntimeInstalled';
 export default defineUnlistedScript(() => {
   const page = globalThis as typeof globalThis & { [installedKey]?: boolean };
   if (page[installedKey]) return; page[installedKey] = true;
+  const fillOperations = new FillOperations();
   const runtimeFields = new Map<string, RuntimePageField>();
   let activeScanToken: string | undefined; let activeNamespace = 'frame'; let baselineFingerprint = ''; let baselineUrl = '';
   let baselineFieldCounts = new Map<string, number>(); let baselineFrameCount = 0; let sessionObserver: MutationObserver | undefined; let mutationTimer: number | undefined;
 
-  function fieldsForDocument(namespace = 'frame'): RuntimePageField[] { return scanDocument(document, { url: location.href, host: location.host, title: document.title, framePath: [] }).map((field) => ({ ...field, fieldId: `${namespace}-${field.fieldId}` })); }
+  function frameContext() {
+    const url = new URL(location.href);
+    return {
+      url: url.href, host: url.host, title: document.title, framePath: [],
+      frameUrl: url.href, frameOrigin: url.origin,
+      frameIdentity: createFrameIdentity({ url: url.href, top: window === window.top, name: window.name, ancestorOrigins: Array.from(location.ancestorOrigins ?? []) }),
+    };
+  }
+  function fieldsForDocument(namespace = 'frame'): RuntimePageField[] { return scanDocument(document, frameContext()).map((field) => ({ ...field, fieldId: `${namespace}-${field.fieldId}` })); }
   function rootKey(field: RuntimePageField): string {
     const parts: string[] = []; let root = field.elements[0]?.getRootNode();
     while (root instanceof ShadowRoot) { const host = root.host; parts.unshift(`${host.tagName.toLowerCase()}#${host.id || host.getAttribute('name') || host.getAttribute('aria-label') || ''}`); root = host.getRootNode(); }
@@ -79,10 +91,11 @@ export default defineUnlistedScript(() => {
   }
   function scan(requestId: string, namespace = 'frame', scanToken?: string): PageResponse {
     try {
+      fillOperations.assertIdle();
       activeNamespace = namespace; const fields = fieldsForDocument(namespace); runtimeFields.clear(); for (const field of fields) runtimeFields.set(field.fieldId, field);
       activeScanToken = scanToken; baselineUrl = location.href; baselineFingerprint = stableFingerprint(fields); baselineFieldCounts = fieldCounts(fields); baselineFrameCount = document.querySelectorAll('iframe,frame').length; observeSession();
       return { type: 'scan-result', requestId, result: { descriptors: fields.map(toDescriptor), metadata: window === window.top ? extractApplicationMetadata(document) : undefined, fingerprint: baselineFingerprint, frameUrl: location.href, childFrameCount: baselineFrameCount } };
-    } catch { return { type: 'error', requestId, error: createRuntimeError('SCAN_FAILED', 'The frame could not be scanned.', true) }; }
+    } catch (error) { return { type: 'error', requestId, error: error instanceof RuntimeRequestError ? error.runtimeError : createRuntimeError('SCAN_FAILED', 'The frame could not be scanned.', true) }; }
   }
   function currentField(field: RuntimePageField): RuntimePageField | undefined { return field.elements.every((element) => element.isConnected) ? field : undefined; }
   async function fill(message: Extract<PageMessage, { type: 'fill-fields' }>): Promise<PageResponse> {
@@ -102,6 +115,7 @@ export default defineUnlistedScript(() => {
   }
   browser.runtime.onMessage.addListener((message: ContentPageMessage) => {
     if (message.type === 'scan-page') return Promise.resolve(scan(message.requestId, message.namespace, message.scanToken));
+    if (message.type === 'extract-application-candidates') return Promise.resolve({ type: 'application-candidates' as const, requestId: message.requestId, candidates: extractApplicationCandidates(document, location.href) });
     if (message.type === 'focus-field') return Promise.resolve(focusField(message));
     if (message.type === 'close-preview-overlay') return closeActivePreviewOverlay(document).then(() => ({ type: 'preview-overlay-closed' as const, requestId: message.requestId }));
     if (message.type === 'open-preview-overlay') {
@@ -109,6 +123,20 @@ export default defineUnlistedScript(() => {
       if (requestedUrl.protocol !== allowedUrl.protocol || requestedUrl.host !== allowedUrl.host || requestedUrl.pathname !== allowedUrl.pathname || requestedUrl.searchParams.get('embedded') !== '1' || requestedUrl.searchParams.get('id') !== message.sessionId) return Promise.reject(new Error('Invalid embedded preview URL'));
       createPreviewOverlay({ document, sessionId: message.sessionId, previewUrl: requestedUrl.href }); return Promise.resolve({ type: 'preview-overlay-opened' as const, sessionId: message.sessionId });
     }
-    return fill(message);
+    if (message.type === 'fill-operation-status') return Promise.resolve({ type: 'fill-operation' as const, requestId: message.requestId, ...fillOperations.status(message.operationId) });
+    if (message.type === 'fill-fields') {
+      try {
+        if (!sessionCurrent(message)) return Promise.resolve(stale(message.requestId));
+        const operation = fillOperations.start(message.requestId, async () => {
+          const response = await fill(message);
+          if (response.type !== 'fill-result') throw new Error('Fill session changed');
+          return response.results;
+        });
+        return Promise.resolve({ type: 'fill-operation' as const, requestId: message.requestId, ...operation });
+      } catch (error) {
+        return Promise.resolve({ type: 'error' as const, requestId: message.requestId, error: error instanceof RuntimeRequestError ? error.runtimeError : createRuntimeError('FILL_RESULT_UNKNOWN', '填写结果未确认，请检查页面后重新扫描。', false) });
+      }
+    }
+    return undefined;
   });
 });

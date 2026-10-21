@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApplicationStore, createApplicationId } from '../../../src/storage/application-store';
-import type { StoragePort } from '../../../src/storage/storage-port';
+import { StorageError, type StoragePort } from '../../../src/storage/storage-port';
 
 class MemoryStorage implements StoragePort {
   readonly values = new Map<string, unknown>();
@@ -15,21 +15,47 @@ class MemoryStorage implements StoragePort {
 
 describe('ApplicationStore', () => {
   it('creates a manually confirmed application with an applied event', async () => {
-    const store = new ApplicationStore(new MemoryStorage());
+    const storage = new MemoryStorage();
+    const store = new ApplicationStore(storage);
     const record = await store.create({ company: '示例公司', role: '前端工程师', url: 'https://jobs.example/apply', sourceHost: 'jobs.example', appliedAt: '2026-09-15T10:00:00.000Z' });
     expect(record).toMatchObject({ company: '示例公司', role: '前端工程师', currentStage: 'applied', currentStageLabel: '已投递' });
     expect(record.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     expect(record.events).toEqual([expect.objectContaining({ stage: 'applied', label: '已投递', occurredAt: '2026-09-15T10:00:00.000Z' })]);
+    expect(storage.values.get('resume-autofill.applications.v1')).toMatchObject({ records: [record] });
+  });
+
+  it('does not report success when CAS acknowledges without persisting the record', async () => {
+    const storage = new MemoryStorage();
+    storage.compareAndSet = async () => true;
+    const store = new ApplicationStore(storage);
+    await expect(store.create({ company: '未落盘公司', role: '工程师', url: '', sourceHost: '' })).rejects.toMatchObject({
+      code: 'write_failed',
+      message: expect.stringContaining('浏览器存储中未找到'),
+    });
+  });
+
+  it('propagates manual recovery immediately instead of retrying it as a conflict', async () => {
+    const storage = new MemoryStorage(); let attempts = 0;
+    storage.compareAndSet = async () => {
+      attempts += 1;
+      const error = new StorageError('recovery_required', 'write', 'resume-autofill.applications.v1', undefined);
+      error.message = '恢复日志阻塞';
+      Object.assign(error, { outcome: 'manual-recovery-required' });
+      throw error;
+    };
+    await expect(new ApplicationStore(storage).create({ company: 'A', role: '工程师', url: '', sourceHost: '' })).rejects.toMatchObject({ code: 'recovery_required' });
+    expect(attempts).toBe(1);
   });
 
   it('appends preset and custom stages with timestamps', async () => {
     const store = new ApplicationStore(new MemoryStorage());
     const record = await store.create({ company: '示例公司', role: '前端工程师', url: '', sourceHost: '', appliedAt: '2026-09-15T10:00:00.000Z' });
+    await store.addEvent(record.id, { stage: 'assessment', occurredAt: '2026-09-15T12:00:00.000Z' });
     await store.addEvent(record.id, { stage: 'interview_1', occurredAt: '2026-09-16T02:00:00.000Z', note: '视频面试' });
     const updated = await store.addEvent(record.id, { stage: 'custom', label: 'HR 面', occurredAt: '2026-09-17T03:00:00.000Z' });
     expect(updated.currentStageLabel).toBe('HR 面');
-    expect(updated.events.map((event) => event.label)).toEqual(['已投递', '一面', 'HR 面']);
-    expect(updated.events[1]?.note).toBe('视频面试');
+    expect(updated.events.map((event) => event.label)).toEqual(['已投递', '测评', '一面', 'HR 面']);
+    expect(updated.events[2]?.note).toBe('视频面试');
   });
 
   it('keeps all timeline events and derives current stage from the latest timestamp', async () => {
@@ -79,6 +105,14 @@ describe('ApplicationStore', () => {
     await expect(store.list()).rejects.toThrow(/较新版本.*升级扩展/);
     await expect(store.create({ company: 'A', role: '工程师', url: '', sourceHost: '' })).rejects.toThrow(/较新版本.*数据未被修改/);
     expect(storage.values.get('resume-autofill.applications.v1')).toEqual(future);
+  });
+
+  it('rejects corrupt non-empty records and never overwrites them', async () => {
+    const storage = new MemoryStorage(); const corrupt = { schemaVersion: 1, revision: 2, records: [{}] };
+    await storage.set('resume-autofill.applications.v1', corrupt); const store = new ApplicationStore(storage);
+    await expect(store.list()).rejects.toMatchObject({ name: 'CorruptStorageDataError', code: 'corrupt_data' });
+    await expect(store.create({ company: 'A', role: '工程师', url: '', sourceHost: '' })).rejects.toMatchObject({ code: 'corrupt_data' });
+    expect(storage.values.get('resume-autofill.applications.v1')).toEqual(corrupt);
   });
 
   it('rejects records without company or role', async () => {

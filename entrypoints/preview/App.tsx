@@ -3,11 +3,13 @@ import { browser } from 'wxt/browser';
 import { ProfileStore } from '../../src/profile/profile-store';
 import { PendingSaveCoordinator, type SaveState } from '../../src/preview/pending-save';
 import type { FillPreviewItem, PreviewSession, ProfilePreviewSection } from '../../src/preview/preview-session';
-import { buildProfilePreviewSession, previewStorageKey, updateFillPreviewSessionValue } from '../../src/preview/preview-session';
+import { buildFillPreviewSession, buildProfilePreviewSession, loadPreviewSession, removePreviewSession, storePreviewSession, updateFillPreviewSessionValue } from '../../src/preview/preview-session';
+import type { FillOperationQuery, FillSummary } from '../../src/runtime/application-controller';
 import { PREVIEW_REQUEST_CLOSE_MESSAGE, postMessageOrigin, requestEmbeddedPreviewClose } from '../../src/runtime/preview-overlay';
 import type { ConfirmedFill, RuntimeCommandResponse } from '../../src/shared/messages';
 import type { FieldValue } from '../../src/shared/profile';
 import { LocalStorage } from '../../src/storage/local-storage';
+import { savePendingApplicationForPage } from '../../src/storage/pending-application';
 import { failureFeedback } from '../../src/ui/fill-feedback';
 import { parseFieldValue } from '../../src/ui/profile-management';
 import { runtimeErrorMessage, userErrorMessage } from '../../src/ui/user-error-message';
@@ -31,6 +33,11 @@ export default function App() {
   const [active, setActive] = useState<'fill' | 'profile'>('fill');
   const [message, setMessage] = useState('');
   const [fillCompleted, setFillCompleted] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const fillingRef = useRef(false);
+  const [fillUncertain, setFillUncertain] = useState(false);
+  const [uncertainState, setUncertainState] = useState<'checking' | 'running' | 'unknown'>('checking');
+  const uncertainOperation = useRef<{ operationId: string; fields: ConfirmedFill[] } | undefined>(undefined);
   const [failures, setFailures] = useState<Array<{ fieldId: string; reason: string }>>([]);
   const [modifiedFieldIds, setModifiedFieldIds] = useState<Set<string>>(new Set());
   const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({});
@@ -52,12 +59,18 @@ export default function App() {
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
-    void browser.storage.session.get(previewStorageKey(id)).then((stored) => {
-      const value = stored[previewStorageKey(id)] as PreviewSession | undefined;
+    void loadPreviewSession(browser.storage.session, id).then((value) => {
       setSession(value);
       if (value?.kind === 'profile') setActive('profile');
       setLoading(false);
     });
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    const cleanup = () => { void removePreviewSession(browser.storage.session, id); };
+    window.addEventListener('pagehide', cleanup);
+    return () => window.removeEventListener('pagehide', cleanup);
   }, [id]);
 
   useEffect(() => profileStore.subscribe((profile) => {
@@ -109,7 +122,7 @@ export default function App() {
         if (latest?.kind !== 'fill') return;
         const profileSections = buildProfilePreviewSession(updatedProfile).sections;
         const updatedSession = updateFillPreviewSessionValue(latest, fieldId, value, profileSections);
-        await browser.storage.session.set({ [previewStorageKey(id)]: updatedSession });
+        await storePreviewSession(browser.storage.session, updatedSession);
         setSession(updatedSession);
       });
       setSaveStates((previous) => ({ ...previous, [fieldId]: 'saved' }));
@@ -152,6 +165,7 @@ export default function App() {
     if (!(await flushPendingSaves())) return;
     const current = sessionRef.current;
     if (current?.kind !== 'fill' || !current.target) return;
+    if (id) await removePreviewSession(browser.storage.session, id);
     if (embedded) { closeEmbeddedPreview(); return; }
     await browser.tabs.update(current.target.tabId, { active: true });
     if (current.target.windowId !== undefined) await browser.windows.update(current.target.windowId, { focused: true });
@@ -172,20 +186,111 @@ export default function App() {
     return () => window.removeEventListener('message', onParentMessage);
   });
 
+  function applyFillSummary(summary: FillSummary) {
+    setFillCompleted(true);
+    setFailures(summary.failed);
+    if (summary.failed.length > 0) {
+      setMessage(`${summary.verified.length} 项成功，${summary.failed.length} 项需要处理。请查看原因并按需定位。`);
+    } else {
+      setMessage(`已写入招聘页：${summary.verified.length} 项成功${summary.skippedExisting.length ? `，${summary.skippedExisting.length} 项保留原值` : ''}。`);
+    }
+  }
+
   async function runFill(requestedFields: ConfirmedFill[]) {
-    if (!(await flushPendingSaves())) return;
+    if (fillingRef.current || fillUncertain) return;
+    fillingRef.current = true;
+    setFilling(true);
+    const operationId = `preview-${crypto.randomUUID()}`;
+    uncertainOperation.current = { operationId, fields: requestedFields };
+    try {
+      if (!(await flushPendingSaves())) return;
+      const current = sessionRef.current;
+      if (current?.kind !== 'fill' || !current.target || requestedFields.length === 0) return;
+      const requested = new Map(requestedFields.map((field) => [field.fieldId, field]));
+      const fields = current.fields.filter((field) => requested.has(field.fieldId))
+        .map((field) => ({ ...field, overwrite: requested.get(field.fieldId)!.overwrite === true }));
+      uncertainOperation.current = { operationId, fields };
+      setMessage('正在写入目标页面…'); setFailures([]);
+      const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target: current.target, operationId }) as RuntimeCommandResponse;
+      if (!response.ok) {
+        if (['FILL_RESULT_UNKNOWN', 'FILL_IN_PROGRESS'].includes(response.error.code)) {
+          setFillUncertain(true); setUncertainState('checking');
+        }
+        setMessage(runtimeErrorMessage(response.error, '填写失败')); return;
+      }
+      if (!('verified' in response.data)) throw new Error('invalid-fill-result');
+      applyFillSummary(response.data);
+      await savePendingApplicationForPage(current.page);
+      uncertainOperation.current = undefined;
+      if (response.data.failed.length === 0 && !embedded) await returnToTarget();
+    } catch (error) {
+      setFillUncertain(true); setUncertainState('checking');
+      setMessage(userErrorMessage(error, '填写结果未能确认，请检查招聘页面'));
+    } finally {
+      fillingRef.current = false;
+      setFilling(false);
+    }
+  }
+
+  async function recheckUncertainFill() {
+    if (fillingRef.current) return;
     const current = sessionRef.current;
-    if (current?.kind !== 'fill' || !current.target || requestedFields.length === 0) return;
-    const requestedIds = new Set(requestedFields.map((field) => field.fieldId));
-    const fields = current.fields.filter((field) => requestedIds.has(field.fieldId));
-    setMessage('正在写入目标页面…'); setFailures([]);
-    const response = await browser.runtime.sendMessage({ type: 'fill-confirmed-fields', fields, target: current.target }) as RuntimeCommandResponse;
-    if (!response.ok) { setMessage(runtimeErrorMessage(response.error, '填写失败')); return; }
-    const summary = response.data as { verified: string[]; skippedExisting: string[]; failed: Array<{ fieldId: string; reason: string }> };
-    setFillCompleted(true); setFailures(summary.failed);
-    if (summary.failed.length > 0) { setMessage(`${summary.verified.length} 项成功，${summary.failed.length} 项需要处理。请查看原因并按需定位。`); return; }
-    setMessage(`已写入招聘页：${summary.verified.length} 项成功${summary.skippedExisting.length ? `，${summary.skippedExisting.length} 项保留原值` : ''}。`);
-    if (!embedded) await returnToTarget();
+    const operation = uncertainOperation.current;
+    if (current?.kind !== 'fill' || !current.target || !operation) return;
+    fillingRef.current = true; setFilling(true); setUncertainState('checking');
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'query-fill-operation', operationId: operation.operationId, fields: operation.fields, target: current.target,
+      }) as RuntimeCommandResponse;
+      if (!response.ok || !('state' in response.data)) {
+        setUncertainState('unknown');
+        setMessage(response.ok ? '无法确认原填写结果。请先检查招聘页面。' : runtimeErrorMessage(response.error, '无法确认原填写结果'));
+        return;
+      }
+      const result = response.data as FillOperationQuery;
+      if (result.state === 'completed') {
+        applyFillSummary(result.summary); await savePendingApplicationForPage(current.page);
+        setFillUncertain(false); uncertainOperation.current = undefined;
+      } else if (result.state === 'running') {
+        setUncertainState('running'); setMessage('原填写操作仍在进行，请稍后再次核对，不要重复填写。');
+      } else {
+        setUncertainState('unknown'); setMessage('无法确认原填写结果。请检查招聘页面；确认后可重新扫描，旧结果不会再次填写。');
+      }
+    } catch (error) {
+      setUncertainState('unknown'); setMessage(userErrorMessage(error, '无法确认原填写结果，请先检查招聘页面'));
+    } finally {
+      fillingRef.current = false; setFilling(false);
+    }
+  }
+
+  async function acknowledgeAndRescan() {
+    if (fillingRef.current || uncertainState !== 'unknown') return;
+    const current = sessionRef.current;
+    if (current?.kind !== 'fill' || !current.target || !id) return;
+    fillingRef.current = true; setFilling(true);
+    try {
+      const response = await browser.runtime.sendMessage({ type: 'scan-active-tab', target: current.target }) as RuntimeCommandResponse;
+      if (!response.ok || !('fields' in response.data) || !('page' in response.data)) {
+        setMessage(response.ok ? '重新扫描失败，请返回侧边栏重试。' : runtimeErrorMessage(response.error, '重新扫描失败'));
+        return;
+      }
+      const profile = await profileStore.load();
+      const previousByProfile = new Map(current.fields.map((field) => [field.profileKey, field]));
+      const fields = response.data.fields.flatMap((match) => {
+        const profileKey = match.selected?.profileKey;
+        const previous = profileKey ? previousByProfile.get(profileKey) : undefined;
+        return previous ? [{ ...previous, fieldId: match.descriptor.fieldId, overwrite: false }] : [];
+      });
+      const rescanned = { ...buildFillPreviewSession(response.data, profile, fields), id: current.id };
+      await storePreviewSession(browser.storage.session, rescanned);
+      setSession(rescanned); setFillUncertain(false); setFillCompleted(false); setFailures([]);
+      uncertainOperation.current = undefined;
+      setMessage('已按你的确认解除锁定并重新扫描。请核对新扫描结果后再填写。');
+    } catch (error) {
+      setMessage(userErrorMessage(error, '重新扫描失败，请返回侧边栏重试'));
+    } finally {
+      fillingRef.current = false; setFilling(false);
+    }
   }
 
   async function locateFailure(fieldId: string) {
@@ -222,9 +327,10 @@ export default function App() {
     {session.kind === 'fill' && (session.repeatSectionWarnings ?? []).map((warning) => <section className="slot-warning" role="alert" aria-live="polite" key={warning.category}><strong>页面经历槽位不足</strong><span>{warning.message}</span></section>)}
     {active === 'profile' ? <ProfileView sections={profileSections} /> : session.kind === 'fill' && <>{session.items.length === 0 ? <div className="empty-state"><h2>当前没有可预览的字段</h2><p>请返回侧边栏，重新扫描页面并至少选择一个可填写字段。</p><button type="button" onClick={() => void returnToTarget()}>返回招聘页</button></div> : <div className="preview-layout">
       <aside><strong>填写摘要</strong><span>{session.items.length} 个字段</span><span>{new Set(session.items.map((item) => item.group)).size} 个分组</span>{modifiedFieldIds.size > 0 && <span className="modified-count">本次已修改 {modifiedFieldIds.size} 项</span>}<small>页面已有值默认跳过；只有你明确选择覆盖或重试才会覆盖。</small><small>修改会自动保存到本地资料；离开或填写前会等待保存完成。</small><small>最终提交始终由你在招聘页面完成。</small></aside>
-      <div className="preview-content">{groups.map(([group, items]) => <section className="preview-section" key={group}><header><h2>{group}</h2><span>{items.length} 项</span></header><div className="comparison-table"><div className="table-head"><span>页面字段</span><span>当前值</span><span>将填写值（可修改）</span><span>依据</span></div>{items.map((item) => { const state = saveStates[item.fieldId]; return <div className={`comparison-row${modifiedFieldIds.has(item.fieldId) ? ' modified' : ''}`} key={item.fieldId}><strong>{item.label}</strong><span>{item.currentValue || '空'}</span><span>{previewEditor(item)}<small id={`save-${item.fieldId}`} className={`save-state ${state ?? ''}`} role="status" aria-live="polite">{state === 'saving' ? '保存中…' : state === 'saved' ? '已保存' : state === 'failed' ? <>保存失败 <button type="button" className="retry-save" onClick={() => void queueEditedValue(item.fieldId, saveCoordinator.draft(item.fieldId) ?? item.nextValue).catch(() => undefined)}>重试</button></> : '修改后自动保存'}</small></span><span><b>{item.confidence === undefined ? '手动' : `${Math.round(item.confidence * 100)}%`}</b><small>{item.reasons.join('；') || item.source}</small></span></div>; })}</div></section>)}</div>
+      <div className="preview-content">{groups.map(([group, items]) => <section className="preview-section" key={group}><header><h2>{group}</h2><span>{items.length} 项</span></header><div className="comparison-table"><div className="table-head"><span>页面字段</span><span>当前值</span><span>将填写值（可修改）</span><span>依据</span></div>{items.map((item) => { const state = saveStates[item.fieldId]; return <div className={`comparison-row${modifiedFieldIds.has(item.fieldId) ? ' modified' : ''}`} key={item.fieldId}><strong>{item.label}</strong><span>{item.currentValue || '空'}</span><span>{previewEditor(item)}<small id={`save-${item.fieldId}`} className={`save-state ${state ?? ''}`} role="status" aria-live="polite">{state === 'saving' ? '保存中…' : state === 'saved' ? '已保存' : state === 'failed' ? <>保存失败 <button type="button" className="retry-save" disabled={filling || fillUncertain} onClick={() => void queueEditedValue(item.fieldId, saveCoordinator.draft(item.fieldId) ?? item.nextValue).catch(() => undefined)}>重试</button></> : '修改后自动保存'}</small></span><span><b>{item.confidence === undefined ? '手动' : `${Math.round(item.confidence * 100)}%`}</b><small>{item.reasons.join('；') || item.source}</small></span></div>; })}</div></section>)}</div>
     </div>}</>}
-    {session.kind === 'fill' && failures.length > 0 && <section className="preview-failures" aria-labelledby="failure-heading"><header><h2 id="failure-heading">需要处理的字段</h2><span>{failures.length} 项</span></header>{failures.map((failure) => { const feedback = failureFeedback(failure.reason); return <div className={`preview-failure-item failure-${feedback.category}`} key={failure.fieldId}><span><strong>{session.items.find((item) => item.fieldId === failure.fieldId)?.label ?? '未知字段'}</strong><small>{feedback.title}</small><em>{feedback.action}</em></span><button type="button" className="secondary" onClick={() => void locateFailure(failure.fieldId)}>定位并关闭预览</button></div>; })}<button type="button" className="primary retry-failures" onClick={retryFailures}>仅重试失败项</button></section>}
-    {session.kind === 'fill' && session.items.length > 0 && <footer className="action-bar"><div><strong>{fillCompleted ? failures.length ? '部分字段需要处理' : '已写入招聘页面' : `即将填写 ${session.items.length} 项`}</strong><span role="status" aria-live="polite">{message || '不会自动提交申请；投递完成后请在侧边栏主动记录'}</span></div><button type="button" className="primary" onClick={() => void (fillCompleted ? returnToTarget() : runFill(session.fields))}>{fillCompleted ? '返回招聘页检查' : '确认填写'}</button></footer>}
+    {session.kind === 'fill' && fillUncertain && <section className="fill-uncertain" role="alert" aria-labelledby="uncertain-heading"><div><h2 id="uncertain-heading">填写结果待核对</h2><p>为避免重复写入，确认结果前不会再次填写。请先核对原操作；只有结果仍未知且你已检查页面后，才会重新扫描。</p></div><div className="uncertain-actions"><button type="button" className="secondary" disabled={filling} onClick={() => void recheckUncertainFill()}>{uncertainState === 'running' ? '再次核对原填写结果' : '重新核对原填写结果'}</button>{uncertainState === 'unknown' && <button type="button" className="primary" disabled={filling} onClick={() => void acknowledgeAndRescan()}>我已检查页面，重新扫描</button>}</div></section>}
+    {session.kind === 'fill' && failures.length > 0 && <section className="preview-failures" aria-labelledby="failure-heading"><header><h2 id="failure-heading">需要处理的字段</h2><span>{failures.length} 项</span></header>{failures.map((failure) => { const feedback = failureFeedback(failure.reason); return <div className={`preview-failure-item failure-${feedback.category}`} key={failure.fieldId}><span><strong>{session.items.find((item) => item.fieldId === failure.fieldId)?.label ?? '未知字段'}</strong><small>{feedback.title}</small><em>{feedback.action}</em></span><button type="button" className="secondary" onClick={() => void locateFailure(failure.fieldId)}>定位并关闭预览</button></div>; })}<button type="button" className="primary retry-failures" disabled={filling || fillUncertain} onClick={retryFailures}>仅重试失败项</button></section>}
+    {session.kind === 'fill' && session.items.length > 0 && <footer className="action-bar"><div><strong>{fillCompleted ? failures.length ? '部分字段需要处理' : '已写入招聘页面' : `即将填写 ${session.items.length} 项`}</strong><span role="status" aria-live="polite">{message || '不会自动提交申请；投递完成后请在侧边栏主动记录'}</span></div><button type="button" className="primary" disabled={filling || fillUncertain} onClick={() => void (fillCompleted ? returnToTarget() : runFill(session.fields))}>{filling ? '正在填写…' : fillCompleted ? '返回招聘页检查' : '确认填写'}</button></footer>}
   </main>;
 }

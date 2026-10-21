@@ -128,7 +128,7 @@ describe('profile management logic', () => {
     const mutation = deleteExperienceWithRemap(repeated, 'education', 0);
     storage.failNextMappingWrite = true;
 
-    await expect(saveProfileWithMappingRemaps(mutation.profile, [mutation.remap], profileStore, mappingStore)).rejects.toThrow('Storage write failed');
+    await expect(saveProfileWithMappingRemaps(mutation.profile, [mutation.remap], profileStore, mappingStore)).rejects.toThrow(/已恢复到操作前状态/);
     expect(await profileStore.load()).toEqual(repeated);
     expect(await mappingStore.list()).toEqual([originalMapping]);
   });

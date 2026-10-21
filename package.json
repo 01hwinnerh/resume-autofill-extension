@@ -8,10 +8,14 @@
     "build:test": "WXT_ENV=test wxt build",
     "zip": "wxt zip",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
     "fixtures:serve": "node --import tsx/esm tests/fixtures/fixture-server.ts",
-    "e2e": "playwright test"
+    "e2e": "npm run test:e2e-extension",
+    "test:e2e-extension": "playwright test",
+    "evaluate:matching": "node --import tsx/esm tests/quality/evaluate-matching.ts",
+    "bench:forms": "node --import tsx/esm tests/benchmarks/forms.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +28,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@testing-library/react": "^16.3.3",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^26.5.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

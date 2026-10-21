@@ -46,7 +46,12 @@ export interface PageFieldDescriptor {
   /** Non-sensitive evidence describing where site-specific semantics came from. */
   semanticSource?: string;
   framePath: number[];
-  /** Chrome frame context; present for live MV3 scans. */
+  /** Stable frame location used for mapping/adapter scope. Legacy descriptors may omit these fields. */
+  frameUrl?: string;
+  frameOrigin?: string;
+  /** Semantic identity derived from frame URL/name/title; never a transient Chrome frameId. */
+  frameIdentity?: string;
+  /** Chrome frame context; present for live MV3 scans and never persisted as semantic identity. */
   tabId?: number;
   frameId?: number;
   fingerprint: string;

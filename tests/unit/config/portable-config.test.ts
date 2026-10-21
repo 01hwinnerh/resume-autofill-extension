@@ -5,7 +5,8 @@ import type { ApplicationRecord } from '../../../src/shared/application-record';
 import { createMappingId, type UserFieldMapping } from '../../../src/shared/mapping';
 import type { Profile } from '../../../src/shared/profile';
 import { ApplicationStore } from '../../../src/storage/application-store';
-import { MappingStore } from '../../../src/storage/mapping-store';
+import { executeStorageTransaction, type StorageTransactionRequest, type StorageTransactionResult } from '../../../src/storage/coordinated-transaction';
+import { MappingCollisionError, MappingStore } from '../../../src/storage/mapping-store';
 import type { StoragePort } from '../../../src/storage/storage-port';
 
 class MemoryStorage implements StoragePort {
@@ -16,6 +17,13 @@ class MemoryStorage implements StoragePort {
 class FailNextMappingWriteStorage extends MemoryStorage {
   failNextMappingWrite = false;
   override async set<T>(key: string, value: T): Promise<void> { if (key === 'resume-autofill.mappings.v1' && this.failNextMappingWrite) { this.failNextMappingWrite = false; throw new Error('mapping write failed'); } await super.set(key, value); }
+}
+class ConcurrentWriteBeforeTransactionStorage extends MemoryStorage {
+  async transaction(request: StorageTransactionRequest): Promise<StorageTransactionResult> {
+    const current = this.values.get('resume-autofill.profile.v1') as { revision: number; profile: Profile };
+    await this.set('resume-autofill.profile.v1', { ...current, revision: current.revision + 1, profile: { ...current.profile, fields: { ...current.profile.fields, concurrent: { key: 'concurrent', label: '并发', type: 'text', value: '保留', policy: 'auto' } } } });
+    return executeStorageTransaction(this, request);
+  }
 }
 const profile: Profile = { schemaVersion: 1, fields: {
   'identity.name': { key: 'identity.name', label: '姓名', type: 'text', value: '迁移用户', policy: 'auto' },
@@ -61,6 +69,23 @@ describe('portable config', () => {
     await importPortableConfig(parsePortableConfig(JSON.stringify(v1)), profileStore, mappingStore, applicationStore);
     expect((await applicationStore.list()).map((record) => record.id)).toEqual([old.id]);
   });
+  it('rejects mapping identity collisions before starting the transaction', async () => {
+    const storage = new MemoryStorage(); const [profileStore, mappingStore, applicationStore] = stores(storage);
+    const conflict = { ...mappings[0]!, profileKey: 'custom.other', createdAt: '2026-09-17T08:00:00.000Z' };
+    await expect(importPortableConfig(createPortableConfig(profile, [mappings[0]!, conflict], applications), profileStore, mappingStore, applicationStore)).rejects.toBeInstanceOf(MappingCollisionError);
+    expect(storage.values.has('resume-autofill.transaction.v1')).toBe(false);
+    expect(storage.values.has('resume-autofill.profile.v1')).toBe(false);
+  });
+
+  it('rejects an import when another page writes after snapshots are read', async () => {
+    const storage = new ConcurrentWriteBeforeTransactionStorage(); const [profileStore, mappingStore, applicationStore] = stores(storage);
+    await profileStore.save({ schemaVersion: 1, fields: {} });
+    await expect(importPortableConfig(createPortableConfig(profile, mappings, applications), profileStore, mappingStore, applicationStore)).rejects.toThrow(/已被其他页面更新/);
+    expect((await profileStore.load()).fields.concurrent?.value).toBe('保留');
+    expect(await mappingStore.list()).toEqual([]);
+    expect(await applicationStore.list()).toEqual([]);
+  });
+
   it('rolls back profile, mappings and applications when one write fails', async () => {
     const storage = new FailNextMappingWriteStorage(); const [profileStore, mappingStore, applicationStore] = stores(storage);
     const previousProfile: Profile = { schemaVersion: 1, fields: { 'identity.name': { key: 'identity.name', label: '姓名', type: 'text', value: '原用户', policy: 'auto' } } };

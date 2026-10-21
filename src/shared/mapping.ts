@@ -17,6 +17,8 @@ export interface UserFieldMapping {
   profileKey: string;
   /** Repeated education/work/project section index. Missing on legacy mappings. */
   sectionIndex?: number;
+  /** Stable semantic owner frame. Missing on legacy mappings, which remain valid as fallback. */
+  frameIdentity?: string;
   createdAt: string;
 }
 
@@ -45,9 +47,10 @@ export function inferMappingSectionIndex(profileKey: string): number | undefined
   return match ? Number(match[1]) : undefined;
 }
 
-export function createMappingId(fingerprint: string, scope: MappingScope | LegacyMappingScope, sectionIndex?: number): string {
+export function createMappingId(fingerprint: string, scope: MappingScope | LegacyMappingScope, sectionIndex?: number, frameIdentity?: string): string {
   const normalized = normalizeMappingScope(scope);
   const target = normalized.kind === 'global' ? '*' : normalized.kind === 'host' ? normalized.host : `${normalized.host}${normalized.path}`;
   const section = sectionIndex === undefined ? '-' : String(sectionIndex);
-  return `${normalized.kind}:${encodeURIComponent(target)}:${encodeURIComponent(fingerprint)}:${section}`;
+  const frame = frameIdentity ? `:${encodeURIComponent(frameIdentity)}` : '';
+  return `${normalized.kind}:${encodeURIComponent(target)}:${encodeURIComponent(fingerprint)}:${section}${frame}`;
 }

@@ -7,7 +7,8 @@ import {
   type NewApplicationEvent,
   type NewApplicationRecord,
 } from '../shared/application-record';
-import { StorageError, UnsupportedSchemaVersionError, type StoragePort } from './storage-port';
+import { CorruptStorageDataError, futureSchema, inspectionFromError, type StorageInspection } from './storage-codec';
+import { StorageError, type StoragePort } from './storage-port';
 
 export const APPLICATIONS_KEY = 'resume-autofill.applications.v1';
 const SCHEMA_VERSION = 1 as const;
@@ -117,17 +118,32 @@ function normalizeRecords(records: ApplicationRecord[]): ApplicationRecord[] {
   });
 }
 
-function decode(value: unknown): { records: ApplicationRecord[]; revision: number } {
+function samePersistedRecord(left: ApplicationRecord, right: ApplicationRecord): boolean {
+  return left.id === right.id && left.company === right.company && left.role === right.role
+    && left.url === right.url && left.sourceHost === right.sourceHost
+    && left.appliedAt === right.appliedAt && left.updatedAt === right.updatedAt
+    && left.currentStage === right.currentStage && left.currentStageLabel === right.currentStageLabel
+    && left.events.length === right.events.length
+    && left.events.every((event, index) => {
+      const other = right.events[index];
+      return !!other && event.id === other.id && event.stage === other.stage && event.label === other.label
+        && event.occurredAt === other.occurredAt && (event.note ?? '') === (other.note ?? '');
+    });
+}
+
+export interface ApplicationSnapshot { records: ApplicationRecord[]; revision: number }
+export function applicationEnvelope(records: ApplicationRecord[], revision: number): ApplicationEnvelope {
+  return { schemaVersion: SCHEMA_VERSION, revision, records: normalizeRecords(records) };
+}
+
+function decode(value: unknown): ApplicationSnapshot {
   if (value === undefined) return { records: [], revision: 0 };
   if (Array.isArray(value)) {
-    if (!value.every(isApplicationRecord)) throw new Error('历史投递记录格式已损坏，数据未被修改');
+    if (!value.every(isApplicationRecord)) throw new CorruptStorageDataError(APPLICATIONS_KEY, value, '历史投递记录格式已损坏');
     return { records: normalizeRecords(value), revision: 0 };
   }
-  if (value && typeof value === 'object') {
-    const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
-    if (typeof schemaVersion === 'number' && schemaVersion > SCHEMA_VERSION) throw new UnsupportedSchemaVersionError(APPLICATIONS_KEY, schemaVersion);
-  }
-  if (!isEnvelope(value)) throw new Error('投递记录存储格式无法识别或已损坏，数据未被修改');
+  futureSchema(APPLICATIONS_KEY, value, SCHEMA_VERSION);
+  if (!isEnvelope(value)) throw new CorruptStorageDataError(APPLICATIONS_KEY, value, '投递记录存储格式无法识别或已损坏');
   return { records: normalizeRecords(value.records), revision: value.revision ?? 0 };
 }
 
@@ -146,6 +162,21 @@ export class ApplicationStore {
   async list(): Promise<ApplicationRecord[]> {
     const { records } = await this.read();
     return this.sorted(records);
+  }
+
+  async snapshot(): Promise<ApplicationSnapshot> {
+    const current = await this.read();
+    return { records: structuredClone(current.records), revision: current.revision };
+  }
+
+  async inspect(): Promise<StorageInspection> {
+    const raw = await this.storage.get<unknown>(APPLICATIONS_KEY);
+    if (raw === undefined) return { key: APPLICATIONS_KEY, state: 'missing' };
+    try {
+      const decoded = decode(raw);
+      const legacy = Array.isArray(raw) || (!!raw && typeof raw === 'object' && (raw as { revision?: unknown }).revision === undefined);
+      return { key: APPLICATIONS_KEY, state: legacy ? 'legacy' : 'current', raw: structuredClone(raw), schemaVersion: SCHEMA_VERSION, message: `revision ${decoded.revision}` };
+    } catch (error) { return inspectionFromError(APPLICATIONS_KEY, raw, error); }
   }
 
   subscribe(listener: (records: ApplicationRecord[]) => void, onError?: (error: StorageError) => void): () => void {
@@ -187,7 +218,16 @@ export class ApplicationStore {
     const now = input.appliedAt ?? new Date().toISOString();
     const firstEvent: ApplicationEvent = { id: createApplicationId(), stage: 'applied', label: applicationStageLabel('applied'), occurredAt: now, note: input.note?.trim() || undefined };
     const record = normalizeRecord({ id: createApplicationId(), company: input.company, role: input.role, url: input.url, sourceHost: input.sourceHost, appliedAt: now, updatedAt: now, currentStage: 'applied', currentStageLabel: firstEvent.label, events: [firstEvent] });
-    await this.update((records) => [record, ...records]); return record;
+    await this.update((records) => [record, ...records]);
+    const persisted = (await this.read()).records.find((candidate) => candidate.id === record.id);
+    if (!persisted || !samePersistedRecord(persisted, record)) {
+      const error = new StorageError('write_failed', 'read', APPLICATIONS_KEY, persisted);
+      error.message = persisted
+        ? `投递记录 ${record.id} 写后校验失败：持久化字段与待保存记录不一致。`
+        : `投递记录 ${record.id} 写后校验失败：浏览器存储中未找到该记录。`;
+      throw error;
+    }
+    return structuredClone(persisted);
   }
 
   async updateRecord(recordId: string, patch: ApplicationRecordPatch): Promise<ApplicationRecord> {
@@ -238,7 +278,7 @@ export class ApplicationStore {
   private async read(): Promise<{ records: ApplicationRecord[]; revision: number }> {
     try { return decode(await this.storage.get<unknown>(APPLICATIONS_KEY)); }
     catch (cause) {
-      if (cause instanceof UnsupportedSchemaVersionError) throw cause;
+      if (cause instanceof StorageError) throw cause;
       const error = new StorageError('read_failed', 'read', APPLICATIONS_KEY, cause);
       if (cause instanceof Error) error.message = `读取投递记录失败：${cause.message}`;
       throw error;
@@ -253,7 +293,10 @@ export class ApplicationStore {
         try {
           if (this.storage.compareAndSet) { if (await this.storage.compareAndSet(APPLICATIONS_KEY, current.revision, envelope)) return; continue; }
           await this.storage.set(APPLICATIONS_KEY, envelope); return;
-        } catch (cause) { throw new StorageError('write_failed', 'write', APPLICATIONS_KEY, cause); }
+        } catch (cause) {
+          if (cause instanceof StorageError) throw cause;
+          throw new StorageError('write_failed', 'write', APPLICATIONS_KEY, cause);
+        }
       }
       throw new StorageError('conflict', 'write', APPLICATIONS_KEY, new Error('optimistic write retries exhausted'));
     });

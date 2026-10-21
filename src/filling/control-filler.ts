@@ -22,7 +22,17 @@ function hasExistingValue(field: RuntimePageField): boolean {
 
 async function settleAndVerify(field: RuntimePageField, expected: FieldValue): Promise<FillOutcome> {
   await new Promise((resolve) => setTimeout(resolve, 0));
-  const verification = verifyField(field, expected);
+  let verification = verifyField(field, expected);
+  if (verification.verified) {
+    // Allow delayed blur validation to settle before finalizing the field result.
+    const deadline = Date.now() + 600;
+    while (verification.verified && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(50, deadline - Date.now())));
+      verification = field.elements.every((element) => element.isConnected)
+        ? verifyField(field, expected)
+        : { fieldId: field.fieldId, verified: false, reason: 'control changed after filling; rescan required' };
+    }
+  }
   return verification.verified ? { status: 'filled', fieldId: field.fieldId } : failed(field.fieldId, verification.reason ?? 'field verification failed');
 }
 

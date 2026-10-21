@@ -5,12 +5,18 @@ interface CodedError { code?: unknown; message?: unknown }
 export function userErrorMessage(error: unknown, action = '操作失败'): string {
   console.error(`[resume-autofill] ${action}`, error);
   if (error instanceof StorageError) {
+    const outcome = (error as StorageError & { outcome?: unknown }).outcome;
+    if (outcome === 'failed-recovered') return `${action}：操作失败，但已恢复到操作前状态；请重试。`;
+    if (outcome === 'manual-recovery-required' || error.code === 'recovery_required') return `${action}：存储恢复日志正在阻塞写入，请前往“我的资料 → 配置迁移”处理后重试。`;
+    if (error.code === 'corrupt_data') return `${action}：本地数据已损坏，已阻止覆盖。请在“完整备份与恢复”中导出原始数据。`;
     if (error.code === 'unsupported_schema') return `${action}：检测到较新版本的数据，请升级扩展后重试；现有数据不会被覆盖。`;
     if (error.code === 'conflict') return `${action}：其他扩展页面正在更新同一份数据，请重试。`;
+    if (error.code === 'write_failed' && /[\u3400-\u9fff]/.test(error.message)) return `${action}：${error.message}`;
     return `${action}：浏览器本地存储暂时不可用，请检查扩展权限后重试。`;
   }
   const candidate = error as CodedError | undefined;
   const code = typeof candidate?.code === 'string' ? candidate.code : '';
+  if (code === 'FILL_IN_PROGRESS' || code === 'FILL_RESULT_UNKNOWN') return `${action}：上一次填写仍在处理或结果尚未确认，请等待并检查招聘页，不要立即重复填写；刷新后需重新扫描。`;
   const detail = typeof candidate?.message === 'string' ? candidate.message.toLocaleLowerCase() : '';
   if (code === 'TAB_UNAVAILABLE' || code === 'CONTENT_SCRIPT_UNAVAILABLE' || detail.includes('frame')) {
     return `${action}：招聘页面或其中的嵌入区域已变化，请返回页面后重新扫描。`;

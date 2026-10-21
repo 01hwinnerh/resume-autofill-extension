@@ -33,7 +33,8 @@ describe('preview overlay', () => {
     expect(document.body.style.overflow).toBe('auto');
   });
 
-  it('replaces an existing overlay and closes the current overlay with Escape', () => {
+  it('replaces an existing overlay and closes the current overlay with Escape after the frame handshake timeout', () => {
+    vi.useFakeTimers();
     document.body.innerHTML = '';
     const first = createPreviewOverlay({ document, sessionId: 'one', previewUrl: 'chrome-extension://id/preview.html?id=one&embedded=1' });
     const second = createPreviewOverlay({ document, sessionId: 'two', previewUrl: 'chrome-extension://id/preview.html?id=two&embedded=1' });
@@ -41,8 +42,11 @@ describe('preview overlay', () => {
     expect(first.host.isConnected).toBe(false);
     expect(document.querySelectorAll(`[${PREVIEW_OVERLAY_HOST_ATTRIBUTE}]`)).toHaveLength(1);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(second.host.isConnected).toBe(true);
+    vi.advanceTimersByTime(1500);
     expect(second.host.isConnected).toBe(false);
     expect(document.body.style.overflow).toBe('');
+    vi.useRealTimers();
   });
 
   it('accepts only the embedded frame close signal for the matching session', () => {

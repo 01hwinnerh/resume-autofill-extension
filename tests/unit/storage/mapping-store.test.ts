@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMappingId, type MappingScope, type UserFieldMapping } from '../../../src/shared/mapping';
-import { MappingStore } from '../../../src/storage/mapping-store';
+import { MappingCollisionError, MappingStore, remapMappings } from '../../../src/storage/mapping-store';
 import type { StoragePort } from '../../../src/storage/storage-port';
 
 class MemoryStorage implements StoragePort {
@@ -60,14 +60,34 @@ describe('MappingStore', () => {
     expect(storage.setCount - writesBefore).toBe(1);
     expect(await store.list()).toEqual([mapping('school', 'educations.0.school', 0)]);
   });
+  it('regenerates IDs after section remaps and rejects semantic collisions', () => {
+    const first = mapping('same', 'educations.1.school', 1);
+    const second = mapping('same', 'educations.2.major', 2);
+    expect(() => remapMappings([first, second], [{ 'educations.1.school': 'educations.0.school', 'educations.2.major': 'educations.0.major' }])).toThrow(MappingCollisionError);
+    const remapped = remapMappings([first], [{ 'educations.1.school': 'educations.0.school' }]);
+    expect(remapped[0]).toMatchObject({ id: createMappingId('same', scope, 0), profileKey: 'educations.0.school', sectionIndex: 0 });
+  });
+
+  it('deduplicates only mappings that become semantically identical after remap', () => {
+    const result = remapMappings([
+      mapping('same', 'educations.1.school', 1),
+      mapping('same', 'educations.2.school', 2, '2026-09-15T00:00:00.000Z'),
+    ], [{ 'educations.1.school': 'educations.0.school', 'educations.2.school': 'educations.0.school' }]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ id: createMappingId('same', scope, 0), profileKey: 'educations.0.school' });
+  });
+
   it('deletes several mappings in one serialized write', async () => {
     const store = new MappingStore(new MemoryStorage()); const first = mapping('first'); const second = mapping('second'); const third = mapping('third');
     await store.replace([first, second, third]); await store.deleteMany([first.id, third.id]);
     expect(await store.list()).toEqual([second]);
   });
-  it('falls back when persisted v1 data is malformed', async () => {
-    const storage = new MemoryStorage(); await storage.set('resume-autofill.mappings.v1', { schemaVersion: 1, mappings: [null] });
-    await expect(new MappingStore(storage).list()).resolves.toEqual([]);
+  it('rejects malformed persisted v1 data and never overwrites it', async () => {
+    const storage = new MemoryStorage(); const corrupt = { schemaVersion: 1, mappings: [null] };
+    await storage.set('resume-autofill.mappings.v1', corrupt); const store = new MappingStore(storage);
+    await expect(store.list()).rejects.toMatchObject({ name: 'CorruptStorageDataError', code: 'corrupt_data' });
+    await expect(store.upsert(mapping('new'))).rejects.toMatchObject({ code: 'corrupt_data' });
+    expect(storage.values.get('resume-autofill.mappings.v1')).toEqual(corrupt);
   });
   it('rejects a future schema version and does not overwrite it', async () => {
     const storage = new MemoryStorage(); const future = { schemaVersion: 2, revision: 3, mappings: [mapping('first')] };
@@ -93,5 +113,43 @@ describe('MappingStore', () => {
   it('translates storage failures into a write StorageError', async () => {
     const cause = new Error('backend failed'); const storage: StoragePort = { get: async () => undefined, set: async () => { throw cause; } };
     await expect(new MappingStore(storage).upsert(mapping('private-value'))).rejects.toMatchObject({ name: 'StorageError', code: 'write_failed', operation: 'write', key: 'resume-autofill.mappings.v1', cause });
+  });
+});
+
+
+describe('frame-scoped mappings', () => {
+  it('isolates same-fingerprint fields in two semantic frames and keeps legacy fallback', async () => {
+    const { matchFields } = await import('../../../src/matching/generic-matcher');
+    const profile = {
+      schemaVersion: 1 as const,
+      fields: {
+        'custom.left': { key: 'custom.left', label: '左侧', type: 'text' as const, value: 'L', policy: 'auto' as const },
+        'custom.right': { key: 'custom.right', label: '右侧', type: 'text' as const, value: 'R', policy: 'auto' as const },
+        'custom.legacy': { key: 'custom.legacy', label: '旧映射', type: 'text' as const, value: 'O', policy: 'auto' as const },
+      },
+    };
+    const base = { id: '', scope, fingerprint: 'same-field', sectionIndex: undefined, createdAt: '2026-09-23T00:00:00.000Z' };
+    const mappings: UserFieldMapping[] = [
+      { ...base, id: createMappingId('same-field', scope, undefined, 'frame:left'), profileKey: 'custom.left', frameIdentity: 'frame:left' },
+      { ...base, id: createMappingId('same-field', scope, undefined, 'frame:right'), profileKey: 'custom.right', frameIdentity: 'frame:right' },
+    ];
+    const fields = ['left', 'right'].map((side) => ({ fieldId: side, kind: 'text' as const, label: '同名字段', options: [], currentValue: '', framePath: [], frameIdentity: `frame:${side}`, frameUrl: `https://example.test/${side}`, fingerprint: 'same-field' }));
+    expect(matchFields(fields, profile, { mappings, pageContext: { host: 'example.test', path: '/apply' } }).map((item) => item.selected?.profileKey)).toEqual(['custom.left', 'custom.right']);
+
+    const legacy: UserFieldMapping = { ...base, id: 'legacy', profileKey: 'custom.legacy' };
+    expect(matchFields([fields[0]], profile, { mappings: [legacy], pageContext: { host: 'example.test', path: '/apply' } })[0].selected?.profileKey).toBe('custom.legacy');
+
+    const legacyTitleIdentity: UserFieldMapping = {
+      ...base,
+      id: 'legacy-title',
+      profileKey: 'custom.left',
+      frameIdentity: 'https://example.test/left|name:left-frame|title:First step',
+    };
+    const stableDescriptor = {
+      ...fields[0],
+      frameIdentity: 'https://example.test/left|ancestors:https://example.test|name:left-frame',
+    };
+    expect(matchFields([stableDescriptor], profile, { mappings: [legacyTitleIdentity], pageContext: { host: 'example.test', path: '/apply' } })[0].selected?.profileKey).toBe('custom.left');
+    expect(matchFields([{ ...stableDescriptor, frameIdentity: 'https://example.test/left|ancestors:https://example.test|name:right-frame' }], profile, { mappings: [legacyTitleIdentity], pageContext: { host: 'example.test', path: '/apply' } })[0].selected?.profileKey).not.toBe('custom.left');
   });
 });

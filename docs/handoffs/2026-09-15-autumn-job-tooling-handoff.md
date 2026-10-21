@@ -1,6 +1,6 @@
 # 秋招工具链项目交接说明
 
-更新时间：2026-09-15（Asia/Shanghai）
+更新时间：2026-09-23（Asia/Shanghai）
 
 本文面向接手本仓库的 Agent 或开发者。内容区分“当前已实现事实”“已经确认的产品方向”和“尚未实现的后续方案”，不得把后两者当成现有代码能力。
 
@@ -8,11 +8,7 @@
 
 仓库路径：`/Users/bytedance/Study/vibe/resume-autofill-extension`
 
-当前分支：`aime/1789464099-profile-mapping-workflow`
-
-当前 HEAD：`e6e376917204b175e2cd1002e2761136e5612f8c`，最近一次提交标题为 `docs(resume-autofill): replace interview plan with debrief bot scope`。当前分支比 `origin/aime/1789464099-profile-mapping-workflow` 超前 6 个提交。
-
-当前工作区在本次交接前是干净的，当前分支已跟踪 `origin/aime/1789464099-profile-mapping-workflow`。不要假设它仍然是早期的 `feat/resume-autofill-mvp` 分支；`d9dec1a` 及其后续提交已经重构资料管理、映射作用域、扫描逻辑、UI 入口、投递记录和 ByteDance Jobs 适配。
+当前分支：`fix/plugin-reliability`。工作区包含尚未提交的可靠性改动，接手时必须以 `git status --short --branch` 为准并保留这些改动；本文不再固定 HEAD。
 
 接手后的第一组只读检查：
 
@@ -31,7 +27,7 @@ npm run build
 npm run e2e
 ```
 
-它会由 Playwright 配置启动本地 fixture 服务，并在已安装的 Google Chrome 中运行。`playwright.config.ts` 内部使用 `pnpm build:test` 和 `pnpm fixtures:serve --port 4173`；仓库保留 `pnpm-lock.yaml`，修改包管理方式前先确认影响。
+它会由 Playwright 配置使用 npm 构建测试扩展、启动本地 fixture 服务，并在已安装的 Google Chrome 中运行。仓库以 `package-lock.json` / npm 为包管理基线。
 
 ## 2. 用户目标和不可突破的约束
 
@@ -54,7 +50,7 @@ npm run e2e
 
 ## 3. 当前产品定位
 
-当前仓库是一个 Chrome Manifest V3 浏览器扩展，产品定位是“本地优先、确认优先的招聘表单填写助手”。它不是自动投递机器人，也不是当前阶段的投递记录系统。
+当前仓库是一个 Chrome Manifest V3 浏览器扩展，产品定位是“本地优先、确认优先的招聘表单填写助手”，并已包含由用户手动确认写入的投递记录工作台；它不是自动投递机器人。
 
 当前扩展有三个主要界面：
 
@@ -150,6 +146,14 @@ Side panel
 
 验证时曾发现本地端口 `4173` 被遗留 fixture 进程占用；确认是本项目端口上的具体 Node 进程后停止该进程，随后 E2E 全部通过。它不是代码失败，不要通过修改端口边界来掩盖同类问题。
 
+### 4.6 2026-09-23 可靠性现状
+
+- 扫描与填写覆盖可访问 frame 和 open Shadow DOM；跨域 frame 依赖 `http/https` host permissions。拒绝或不可访问的 frame 会作为 warning 展示，不会伪装成已扫描。
+- preview 在招聘页内呈现并绑定扫描目标；页面或 frame 导航后旧 session 失效。
+- V2 备份包含投递记录；pending application draft、存储 transaction journal 与手工恢复提示已经落地。
+- `tests/e2e/real-extension.spec.ts` 加载真实构建扩展；`tests/quality/` 是版本化脱敏仿真 corpus，指标不是线上准确率。
+- 质量指标、性能基线、命令和真实站点限制统一记录在 `docs/quality-baseline.md`。
+
 ## 5. 关键代码入口
 
 | 目录或文件 | 职责 |
@@ -174,11 +178,11 @@ Side panel
 以下内容不能在交接时写成“已经支持”：
 
 - 更多真实招聘平台 Adapter；当前只有 ByteDance Jobs Adapter，其他平台仍依赖通用表单匹配。
-- Chrome Web Store 发布；当前构建可以作为本地解压扩展加载，但还没有商店图标、截图、隐私声明和完整发布材料。
-- 投递工作台已实现岗位记录、阶段时间线、备注和基础搜索；截止时间、简历版本关联、提醒、统计和批量管理尚未实现。
-- 面试复盘辅助机器人尚未实现；当前已确认 RAG 为核心能力，方向性计划已由用户复制到仓库外，当前仓库不保留该计划副本。
+- Chrome Web Store 发布；当前构建可以作为本地解压扩展加载，但还没有完整发布材料。
+- 投递工作台尚未覆盖截止时间、简历版本关联、提醒、统计和批量管理。
+- 面试复盘辅助机器人尚未实现。
 - 文件上传、开放题答案库、多份独立简历版本和 AI 均不在当前代码中。
-- Git 同步、JSON 导入导出和跨设备同步尚未实现；当前 README 已明确说明该路线图不是现有能力。
+- V2 明文 JSON 已支持资料、映射和投递记录备份/恢复，并通过 journal 协调恢复；尚未实现 Git 同步或云端跨设备同步。
 
 ## 7. 投递工作台的已确认方向
 

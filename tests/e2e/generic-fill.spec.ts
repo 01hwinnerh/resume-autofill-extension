@@ -122,7 +122,7 @@ test('explicit retry can overwrite a value left by a failed attempt', async ({ p
 test('notifies when a dynamic step reveals new fields without exposing values', async ({ page }) => {
   await page.goto('/dynamic-form.html');
   await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-watch-dynamic' });
-  await page.getByRole('button', { name: '添加教育经历' }).click();
+  await page.locator('#fields').evaluate((container) => container.insertAdjacentHTML('beforeend', '<label for="school">毕业院校</label><input id="school" name="school">'));
   await expect.poll(async () => runtimeNotifications(page)).toEqual([{
     type: 'page-fields-changed', newFieldCount: 1, sessionInvalidated: false,
   }]);
@@ -142,13 +142,13 @@ test('ignores scrolling and ordinary class/style mutations', async ({ page }) =>
 test('rebinds a semantically identical replacement before filling', async ({ page }) => {
   await page.goto('/basic-form.html');
   const scan = await runRuntimeMessage(page, { type: 'scan-page', requestId: 'scan-rebind' });
-  const name = scan.result.descriptors.find((field) => field.label === '姓名')!;
-  await page.evaluate(() => { const old = document.querySelector<HTMLInputElement>('#name')!; old.replaceWith(old.cloneNode(true)); });
+  const name = scan.result.descriptors.find((field) => field.label === '邮箱')!;
+  await page.evaluate(() => { const old = document.querySelector<HTMLInputElement>('#email')!; old.replaceWith(old.cloneNode(true)); });
   await page.waitForTimeout(400);
   expect(await runtimeNotifications(page)).toEqual([]);
-  const response = await runRuntimeMessage(page, { type: 'fill-fields', requestId: 'fill-rebound', fields: [{ fieldId: name.fieldId, profileKey: 'identity.name', value: '重绑定成功' }] });
+  const response = await runRuntimeMessage(page, { type: 'fill-fields', requestId: 'fill-rebound', fields: [{ fieldId: name.fieldId, profileKey: 'contact.email', value: 'rebound@example.test' }] });
   expect(response.results[0]?.outcome.status).toBe('filled');
-  await expect(page.locator('#name')).toHaveValue('重绑定成功');
+  await expect(page.locator('#email')).toHaveValue('rebound@example.test');
 });
 
 test('hard-invalidates when a baseline field disappears', async ({ page }) => {

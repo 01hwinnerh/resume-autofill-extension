@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { STORAGE_TRANSACTION_RECOVERY_STATE, STORAGE_TRANSACTION_RESOLVE } from '../../../src/storage/coordinated-transaction';
 import { LocalStorage, STORAGE_COMPARE_AND_SET } from '../../../src/storage/local-storage';
 
 describe('LocalStorage', () => {
@@ -21,6 +22,29 @@ describe('LocalStorage', () => {
     sendMessage.mockResolvedValue({ ok: true }); const storage = new LocalStorage();
     await expect(storage.compareAndSet('key', 2, { revision: 3 })).resolves.toBe(true);
     expect(sendMessage).toHaveBeenCalledWith({ type: STORAGE_COMPARE_AND_SET, key: 'key', expectedRevision: 2, value: { revision: 3 } });
+  });
+
+  it('returns false only for an explicit revision conflict', async () => {
+    sendMessage.mockResolvedValue({ ok: false, error: { code: 'conflict', message: 'revision changed' } });
+    await expect(new LocalStorage().compareAndSet('key', 2, { revision: 3 })).resolves.toBe(false);
+  });
+
+  it('propagates manual recovery and rejects malformed CAS responses', async () => {
+    const storage = new LocalStorage();
+    sendMessage.mockResolvedValueOnce({ ok: false, error: { code: 'recovery_required', outcome: 'manual-recovery-required', message: '请处理恢复日志' } });
+    await expect(storage.compareAndSet('key', 2, { revision: 3 })).rejects.toMatchObject({ code: 'recovery_required', message: '请处理恢复日志', outcome: 'manual-recovery-required' });
+    sendMessage.mockResolvedValueOnce({ ok: { ok: false } });
+    await expect(storage.compareAndSet('key', 2, { revision: 3 })).rejects.toMatchObject({ code: 'write_failed' });
+  });
+
+  it('routes recovery inspection and explicit resolution through background', async () => {
+    sendMessage.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ ok: true, outcome: 'resolved-kept-current', transactionId: 'tx' });
+    const storage = new LocalStorage();
+    await storage.recoveryState();
+    const request = { transactionId: 'tx', action: 'keep-current' as const, expected: [], expectedJournal: { transactionId: 'tx' } };
+    await storage.resolveTransaction(request);
+    expect(sendMessage).toHaveBeenNthCalledWith(1, { type: STORAGE_TRANSACTION_RECOVERY_STATE });
+    expect(sendMessage).toHaveBeenNthCalledWith(2, { type: STORAGE_TRANSACTION_RESOLVE, request });
   });
 
   it('subscribes to local storage changes and ignores other areas', () => {

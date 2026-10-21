@@ -1,0 +1,31 @@
+{
+  "corpusSchemaVersion": 2,
+  "scannerAndMatcher": {
+    "minimums": {
+      "annotatedFields": 67,
+      "recognizedFields": 63,
+      "correctProfileKey": 63,
+      "profileKeyAccuracy": 1,
+      "autoUsableCoverage": 0.6567
+    },
+    "maximums": {
+      "wrongProfileKey": 0,
+      "falsePositives": 0,
+      "unrecognized": 4
+    }
+  },
+  "matcherOnly": {
+    "minimums": {
+      "annotatedFields": 6,
+      "recognizedFields": 6,
+      "correctProfileKey": 6,
+      "profileKeyAccuracy": 1,
+      "autoUsableCoverage": 0.8333
+    },
+    "maximums": {
+      "wrongProfileKey": 0,
+      "falsePositives": 0,
+      "unrecognized": 0
+    }
+  }
+}

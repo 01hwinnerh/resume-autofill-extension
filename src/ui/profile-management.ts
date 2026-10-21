@@ -1,6 +1,7 @@
-import type { ProfileStore } from '../profile/profile-store';
+import { profileEnvelope, PROFILE_KEY, type ProfileStore } from '../profile/profile-store';
 import type { FieldValue, FillPolicy, Profile, ProfileField, ProfileFieldType } from '../shared/profile';
-import type { MappingStore, ProfileKeyRemap } from '../storage/mapping-store';
+import { createTransactionId, StorageTransactionError } from '../storage/coordinated-transaction';
+import { mappingEnvelope, MAPPINGS_KEY, remapMappings, type MappingStore, type ProfileKeyRemap } from '../storage/mapping-store';
 import { EXPERIENCE_PREFIXES, PROFILE_SECTION_LABELS, experienceDefinitions, profileFieldDefinitions, type ProfileSection, type RepeatableProfileSection } from './profile-fields';
 
 export const QUICK_PROFILE_GROUPS = [
@@ -138,15 +139,17 @@ export function emptyExperienceFields(section: RepeatableProfileSection, index: 
 }
 
 export async function saveProfileWithMappingRemaps(profile: Profile, remaps: ProfileKeyRemap[], profileStore: ProfileStore, mappingStore: MappingStore): Promise<void> {
-  const [previousProfile, previousMappings] = await Promise.all([profileStore.load(), mappingStore.list()]);
-  try {
-    await profileStore.save(profile);
-    await mappingStore.remapProfileKeys(remaps);
-  } catch (cause) {
-    const rollback = await Promise.allSettled([profileStore.save(previousProfile), mappingStore.replace(previousMappings)]);
-    if (rollback.some((result) => result.status === 'rejected')) throw new Error(`保存失败且未能完整恢复资料与映射：${cause instanceof Error ? cause.message : '未知错误'}`, { cause });
-    throw cause;
-  }
+  const [profileSnapshot, mappingSnapshot] = await Promise.all([profileStore.snapshot(), mappingStore.snapshot()]);
+  const result = await profileStore.transaction({
+    transactionId: createTransactionId(),
+    kind: 'profile-mapping-update',
+    targets: [
+      { key: PROFILE_KEY, expectedRevision: profileSnapshot.revision, value: profileEnvelope(profile, profileSnapshot.revision + 1) },
+      { key: MAPPINGS_KEY, expectedRevision: mappingSnapshot.revision, value: mappingEnvelope(remapMappings(mappingSnapshot.mappings, remaps), mappingSnapshot.revision + 1) },
+    ],
+  });
+  if (!result.ok) throw new StorageTransactionError(result);
+  await profileStore.load();
 }
 
 export function generateCustomFieldKey(now = Date.now()): string { return `custom.field_${now.toString(36)}`; }
